@@ -217,6 +217,13 @@ Start-ScheduledTask -TaskName TradrLive
 ## Recent Changes
 
 ### December 2025
+- **DYNAMIC LOT SIZING**: Added adaptive position sizing to optimize FTMO challenge outcomes
+  - Confluence-based scaling: Higher confluence scores (5-7) get larger positions (+15% per point)
+  - Streak-based scaling: Win streaks increase size (+5% per win, max +20%), loss streaks reduce size (-10% per loss, max -40%)
+  - Equity curve scaling: Boost size when profitable (+10% after 3% profit), reduce when in drawdown (-20% after 2% loss)
+  - Safety clamps: Automatic risk reduction when approaching daily loss or total DD limits
+  - Configurable via `use_dynamic_lot_sizing` in `ftmo_config.py`
+  - Risk range: 0.25% floor to 1.5% cap per trade
 - **H4 STOP LOSS CALCULATION**: Changed SL calculation to use H4 timeframe structure instead of Daily
   - Modified `compute_trade_levels` in `strategy_core.py` to accept and use H4 candles
   - Uses 20 H4 candles (~3.3 trading days) instead of 35 daily candles (~7 weeks)
