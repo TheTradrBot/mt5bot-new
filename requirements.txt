@@ -30,3 +30,7 @@ numpy
 pandas
 python-dotenv
 requests
+discord.py
+numpy
+pandas
+requests
