@@ -71,6 +71,7 @@ See `symbol_mapping.py` for complete mapping between OANDA and FTMO formats.
 ├── symbol_mapping.py         # OANDA <-> FTMO symbol mapping
 ├── backtest.py               # Backtest engine using strategy_core
 ├── challenge_rules.py        # FTMO rules and tracking
+├── ftmo_optimizer.py         # Self-optimizing FTMO backtest system
 ├── config.py                 # Configuration settings
 ├── data.py                   # OANDA data source
 ├── tradr/                    # Modular package
