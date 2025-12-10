@@ -79,7 +79,7 @@ class FTMO10KConfig:
     ultra_safe_risk_pct: float = 0.3  # Reduce to 0.3% risk when ultra-safe
     
     # === TOP 10 ASSET WHITELIST (Based on backtest performance) ===
-    # Top 10 performers from backtest (Jan-Nov 2025)
+    # Top 10 performers from backtest analysis
     # These assets showed best win rate, drawdown control, and profit factor
     whitelist_assets: List[str] = field(default_factory=lambda: [
         "SPX500_USD",  # S&P 500 - Best overall performance
