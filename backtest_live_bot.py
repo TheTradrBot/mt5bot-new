@@ -238,6 +238,68 @@ def backtest_live_bot(
     }
 
 
+def export_trades_to_csv(trades: List[BacktestTrade], filename: str):
+    """Export trades to CSV file with all details."""
+    import csv
+    
+    with open(filename, 'w', newline='') as f:
+        fieldnames = [
+            'Trade #', 'Symbol', 'Direction', 'Confluence',
+            'Entry Date', 'Entry Price', 'Stop Loss',
+            'TP1', 'TP2', 'TP3',
+            'Exit Date', 'Exit Price', 'Exit Reason',
+            'TP Hit', 'SL Hit', 'R Multiple', 'Result'
+        ]
+        
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for i, trade in enumerate(trades, 1):
+            # Calculate R-multiple from partial exits
+            total_r = 0.0
+            for exit_info in trade.partial_exits:
+                r_mult = exit_info.get('r_multiple', 0)
+                portion = exit_info.get('portion', 0)
+                total_r += r_mult * portion
+            
+            # Determine which TP was hit
+            tp_hit = "None"
+            sl_hit = "No"
+            
+            if trade.exit_reason == "TP3":
+                tp_hit = "TP3"
+            elif trade.exit_reason == "TP2":
+                tp_hit = "TP2"
+            elif trade.exit_reason == "TP1+Trail":
+                tp_hit = "TP1"
+            elif trade.exit_reason == "SL":
+                sl_hit = "Yes"
+            
+            result_text = "WIN" if total_r > 0 else "LOSS" if total_r < 0 else "BE"
+            
+            writer.writerow({
+                'Trade #': i,
+                'Symbol': trade.symbol,
+                'Direction': trade.direction.upper(),
+                'Confluence': f"{trade.confluence_score}/7",
+                'Entry Date': trade.entry_date.strftime('%Y-%m-%d %H:%M') if trade.entry_date else 'N/A',
+                'Entry Price': f"{trade.entry_price:.5f}" if trade.entry_price else 'N/A',
+                'Stop Loss': f"{trade.stop_loss:.5f}" if trade.stop_loss else 'N/A',
+                'TP1': f"{trade.tp1:.5f}" if trade.tp1 else 'N/A',
+                'TP2': f"{trade.tp2:.5f}" if trade.tp2 else 'N/A',
+                'TP3': f"{trade.tp3:.5f}" if trade.tp3 else 'N/A',
+                'Exit Date': trade.exit_date.strftime('%Y-%m-%d %H:%M') if trade.exit_date else 'N/A',
+                'Exit Price': f"{trade.exit_price:.5f}" if trade.exit_price else 'N/A',
+                'Exit Reason': trade.exit_reason,
+                'TP Hit': tp_hit,
+                'SL Hit': sl_hit,
+                'R Multiple': f"{total_r:+.2f}R",
+                'Result': result_text
+            })
+    
+    print(f"\n✅ Trade details exported to: {filename}")
+
+
 def main():
     """Run backtest for recent period."""
     import argparse
@@ -246,6 +308,7 @@ def main():
     parser.add_argument("--start", type=str, help="Start date (YYYY-MM-DD)", default="2024-01-01")
     parser.add_argument("--end", type=str, help="End date (YYYY-MM-DD)", default="2024-12-31")
     parser.add_argument("--symbols", type=str, nargs="+", help="Specific symbols to test")
+    parser.add_argument("--csv", type=str, help="Export trades to CSV file", default=None)
     
     args = parser.parse_args()
     
@@ -272,6 +335,14 @@ def main():
     print(f"Challenges passed: {challenge.full_challenges_passed}/{len(challenge.challenges)}")
     print(f"Total profit: ${challenge.total_profit_usd:+,.2f} ({challenge.total_profit_pct:+.1f}%)")
     print("=" * 80)
+    
+    # Export to CSV if requested
+    if args.csv:
+        export_trades_to_csv(result["all_trades"], args.csv)
+    else:
+        # Auto-generate CSV filename
+        csv_filename = f"backtest_trades_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.csv"
+        export_trades_to_csv(result["all_trades"], csv_filename)
 
 
 if __name__ == "__main__":
