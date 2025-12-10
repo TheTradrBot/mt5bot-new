@@ -266,7 +266,7 @@ class LiveTradingBot:
                     total_dd_emergency_pct=FTMO_CONFIG.total_dd_emergency_pct,
                     protection_loop_interval_sec=FTMO_CONFIG.protection_loop_interval_sec,
                     pending_order_max_age_hours=FTMO_CONFIG.pending_order_expiry_hours,
-                    profit_ultra_safe_threshold_pct=FTMO_CONFIG.ultra_safe_profit_threshold_pct,
+                    profit_ultra_safe_threshold_pct=FTMO_CONFIG.profit_ultra_safe_threshold_pct,
                     ultra_safe_risk_pct=FTMO_CONFIG.ultra_safe_risk_pct,
                 )
                 self.challenge_manager = ChallengeRiskManager(
@@ -614,8 +614,8 @@ class LiveTradingBot:
                 log.warning(f"[{symbol}] Trading halted: daily loss {daily_loss_pct:.1f}% >= {FTMO_CONFIG.daily_loss_halt_pct}%")
                 return False
             
-            if total_dd_pct >= FTMO_CONFIG.total_dd_halt_pct:
-                log.warning(f"[{symbol}] Trading halted: total DD {total_dd_pct:.1f}% >= {FTMO_CONFIG.total_dd_halt_pct}%")
+            if total_dd_pct >= FTMO_CONFIG.total_dd_emergency_pct:
+                log.warning(f"[{symbol}] Trading halted: total DD {total_dd_pct:.1f}% >= {FTMO_CONFIG.total_dd_emergency_pct}%")
                 return False
             
             max_trades = FTMO_CONFIG.get_max_trades(profit_pct)
