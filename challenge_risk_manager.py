@@ -133,6 +133,25 @@ class ChallengeConfig:
     
     profit_ultra_safe_threshold_pct: float = 8.0
     ultra_safe_risk_pct: float = 0.25
+    
+    max_trades_per_week: int = 20
+    week_start_date: str = ""
+    current_week_trades: int = 0
+    
+    whitelist_assets: List[str] = field(default_factory=lambda: [
+        "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD",
+        "NZDUSD", "EURJPY", "GBPJPY", "XAUUSD", "EURGBP",
+    ])
+    
+    def is_asset_whitelisted(self, symbol: str) -> bool:
+        """Check if asset is in the whitelist."""
+        base_symbol = symbol.replace('.a', '').replace('_m', '').upper()
+        if base_symbol in self.whitelist_assets:
+            return True
+        for asset in self.whitelist_assets:
+            if asset.replace('_', '') == base_symbol.replace('_', ''):
+                return True
+        return False
 
 
 class ChallengeRiskManager:
