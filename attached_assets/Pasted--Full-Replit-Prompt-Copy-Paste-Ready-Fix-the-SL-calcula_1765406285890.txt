@@ -1,0 +1,134 @@
+## Full Replit Prompt - Copy/Paste Ready
+
+```
+Fix the SL calculation to use H4 timeframe structure instead of Daily timeframe structure for tighter stop losses and larger position sizes.
+
+## Problem Summary
+
+The strategy currently uses DAILY timeframe swing points for SL placement, resulting in:
+- SL distances of 500-2000+ pips for forex
+- Tiny lot sizes to maintain 0.5% risk ($50 per trade)
+- Small profits ($40-72 per winning trade) despite holding 24-72 hours
+- Live bot rejecting ALL trades with "SL too wide:  1069. 8 pips (max:  80. 0)"
+
+The trades only last 24-72 hours on average, which is H4 timeframe behavior, but the SL is placed at Daily structure levels far away. 
+
+## Evidence from Backtest CSV (all_trades_jan_nov_2025.csv)
+
+- EUR_GBP: 630 pip SL, 24 hour hold, only $72 profit
+- GBP_JPY: 3700+ pip SL, 96 hour hold, only $44 profit  
+- USD_CHF: 1833 pip SL, 504 hour hold, -$40 loss
+- XAU_USD:  10529 pip SL, 24 hours, $72 profit
+- Average winning trade profit: $44-72 (should be $100-300+)
+
+## Files to Modify
+
+### 1. strategy_core.py - Fix SL Calculation
+
+Find where stop loss is calculated (likely in compute_confluence or generate_signals function). 
+
+Current behavior uses daily swing structure for SL:
+- Looks at recent daily candles
+- Places SL below/above major swing points
+- Results in 500-2000+ pip SL distances
+
+Change to use H4 structure for tighter SL: 
+- Use h4_candles parameter (already passed to functions)
+- Look at last 15-20 H4 candles (~3 trading days)
+- Place SL below/above H4 swing points
+- Results in 50-200 pip SL distances
+
+Alternative: Use ATR-based SL calculation: 
+- Calculate 14-period ATR on daily
+- Set SL at 1.5x to 2x ATR from entry
+- This typically gives 50-150 pip SL for forex
+
+The key change:  SL should be structure-based on H4 timeframe, not Daily timeframe.
+
+### 2. ftmo_config.py - Update get_sl_limits()
+
+After fixing SL calculation, update the pip limits to match H4-based structure: 
+
+```python
+def get_sl_limits(symbol:  str) -> Tuple[float, float]:
+    """Get min/max SL in pips - Updated for H4 structure-based stops."""
+    symbol_upper = symbol.upper().replace("/", "_")
+    
+    # Crypto - reasonable H4 structure
+    if "BTC" in symbol_upper:
+        return (500. 0, 15000.0)
+    if "ETH" in symbol_upper: 
+        return (200.0, 5000.0)
+    
+    # Indices
+    if any(i in symbol_upper for i in ["SPX", "US500", "NAS", "US100"]):
+        return (50.0, 3000.0)
+    
+    # Metals
+    if "XAU" in symbol_upper:
+        return (50.0, 500.0)
+    if "XAG" in symbol_upper:
+        return (20.0, 200.0)
+    
+    # JPY pairs - larger pip values
+    if "JPY" in symbol_upper:
+        return (20.0, 300.0)
+    
+    # GBP pairs - more volatile
+    if "GBP" in symbol_upper:
+        return (20.0, 250.0)
+    
+    # Standard forex pairs
+    return (15.0, 200.0)
+```
+
+### 3. main_live_bot.py - Ensure H4 Data is Used
+
+Verify that h4_candles are being fetched and passed to strategy functions: 
+- Check that get_ohlcv is called with timeframe="H4"
+- Ensure h4_candles is passed to compute_confluence() or generate_signals()
+- The H4 data should be used for SL calculation, not just for confluence scoring
+
+### 4. Update max_entry_distance_r if needed
+
+If entries are still being rejected for "Entry too far", increase the limit:
+- Current:  2. 0R
+- Recommended: 2.5R or 3.0R for H4-based setups
+
+## Expected Results After Fix
+
+| Metric | Before (Daily SL) | After (H4 SL) |
+|--------|-------------------|---------------|
+| SL Distance (forex) | 500-2000 pips | 50-200 pips |
+| SL Distance (XAU) | 10000+ pips | 200-500 pips |
+| Lot Size | 0.005-0.01 lots | 0.03-0.1 lots |
+| Risk per Trade | $50 (0.5%) | $50 (0.5%) |
+| Profit per Win | $40-72 | $100-300+ |
+| Live Bot | Rejects all trades | Takes trades |
+| FTMO Compliant | Yes | Yes |
+
+## Success Criteria
+
+1. SL distances reduced to 50-200 pips for forex pairs
+2. SL distances reduced to 200-500 pips for gold (XAU)
+3. Lot sizes increase proportionally (same dollar risk)
+4. Profits per winning trade increase to $100+
+5. main_live_bot. py stops rejecting trades for "SL too wide"
+6. ftmo_challenge_analyzer.py still generates similar trade count
+7. Still FTMO compliant with 0.5% risk per trade
+8.  Backtest results improve (higher total profit, same or better win rate)
+
+## Testing After Changes
+
+1. Run: python ftmo_challenge_analyzer.py
+   - Should still generate 150+ trades
+   - Average profit per win should increase to $100+
+   - Total profit should be higher than before
+
+2. Run: python main_live_bot.py
+   - Should find tradeable setups
+   - Should NOT reject for "SL too wide"
+   - Should place pending orders when signals are valid
+
+3. Check that risk per trade stays at 0.5% ($50 on 10K account)
+```

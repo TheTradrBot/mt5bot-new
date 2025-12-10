@@ -48,7 +48,7 @@ class ScanResult:
 
 
 def _signal_to_scan_result(signal: Signal) -> ScanResult:
-    """Convert a strategy_core Signal to a ScanResult for Discord display."""
+    """Convert a strategy_core Signal to a ScanResult for display."""
     setup_parts = []
     
     if signal.flags.get("fib"):

@@ -1,5 +1,5 @@
 """
-Enhanced Discord formatting for Blueprint Trader AI.
+Enhanced formatting for Blueprint Trader AI.
 
 Provides clean, comprehensive output for scan results with:
 - Bullish/Bearish/Neutral status
