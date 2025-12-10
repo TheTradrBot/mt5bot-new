@@ -216,6 +216,21 @@ Start-ScheduledTask -TaskName TradrLive
 
 ## Recent Changes
 
+### December 2025
+- **NEW**: Created `ftmo_challenge_analyzer.py` - Ultimate FTMO Challenge Performance Analyzer
+  - Backtests Jan 2025 - Nov 2025 across all 34 tradable symbols
+  - Sequential FTMO challenge simulation (Step 1: 10%, Step 2: 5%)
+  - DukascopyValidator with real tick data validation from tradr/data/dukascopy.py
+  - PerformanceOptimizer that actually modifies FTMO_CONFIG parameters
+  - ChallengeSequencer enforcing all FTMO rules (5% daily loss, 10% DD, 4 min trading days)
+  - Generates comprehensive reports in `ftmo_analysis_output/`:
+    - all_trades_jan_nov_2025.csv (183 trades with 27 columns)
+    - challenge_breakdown.json
+    - challenge_summary_jan_nov_2025.txt
+    - monthly_performance.csv
+    - symbol_performance.csv
+  - Self-optimization loop targeting ≥14 challenges passed, ≤2 failed
+
 ### December 2024
 - **NEW**: Added `challenge_risk_manager.py` - Elite 7-layer safety system for FTMO challenges
   - Global Risk Controller with real-time P/L tracking every 30 seconds
