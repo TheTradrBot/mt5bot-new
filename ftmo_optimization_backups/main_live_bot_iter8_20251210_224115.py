@@ -762,7 +762,7 @@ class LiveTradingBot:
                 entry_price=entry,
                 sl=sl,
                 tp=tp1,
-                expiration_hours=int(FTMO_CONFIG.pending_order_expiry_hours),
+                expiration_hours=FTMO_CONFIG.pending_order_expiry_hours,
             )
             
             if not result.success:

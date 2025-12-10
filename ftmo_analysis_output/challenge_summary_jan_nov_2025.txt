@@ -5,55 +5,58 @@ FTMO CHALLENGE PERFORMANCE - JAN 2025 TO NOV 2025
 
 PERIOD: January 1, 2025 - November 30, 2025 (11 months)
 ACCOUNT SIZE: $10,000 (per challenge)
-TOTAL TRADES EXECUTED: 555
+TOTAL TRADES EXECUTED: 515
 
 CHALLENGE RESULTS:
 ------------------
-Challenges PASSED (Both Steps): 12
+Challenges PASSED (Both Steps): 15
 Challenges FAILED: 3
-Success Rate: 80.0%
+Success Rate: 83.3%
 
 CHALLENGE DETAILS:
 ------------------
-Challenge #1: FAILED | Step 1: -5.1% | Failed at: Step 1
-Challenge #2: FAILED | Step 1: -4.7% | Failed at: Step 1
-Challenge #3: PASSED | Step 1: +10.2% | Step 2: +5.3% | Total: $1,614
-Challenge #4: PASSED | Step 1: +10.4% | Step 2: +5.5% | Total: $1,650
-Challenge #5: PASSED | Step 1: +10.6% | Step 2: +7.6% | Total: $1,900
-Challenge #6: PASSED | Step 1: +10.5% | Step 2: +11.0% | Total: $2,271
-Challenge #7: PASSED | Step 1: +11.0% | Step 2: +6.2% | Total: $1,789
-Challenge #8: PASSED | Step 1: +11.2% | Step 2: +9.3% | Total: $2,162
-Challenge #9: PASSED | Step 1: +10.5% | Step 2: +5.7% | Total: $1,676
-Challenge #10: PASSED | Step 1: +10.5% | Step 2: +5.2% | Total: $1,626
-Challenge #11: PASSED | Step 1: +11.0% | Step 2: +9.3% | Total: $2,133
-Challenge #12: PASSED | Step 1: +10.5% | Step 2: +5.1% | Total: $1,612
-Challenge #13: PASSED | Step 1: +10.4% | Step 2: +6.0% | Total: $1,700
-Challenge #14: PASSED | Step 1: +10.8% | Step 2: +5.5% | Total: $1,692
-Challenge #15: FAILED | Step 1: +7.3% | Failed at: Step 1
+Challenge #1: FAILED | Step 1: -6.0% | Failed at: Step 1
+Challenge #2: FAILED | Step 1: -6.0% | Failed at: Step 1
+Challenge #3: PASSED | Step 1: +10.1% | Step 2: +5.8% | Total: $1,640
+Challenge #4: PASSED | Step 1: +10.3% | Step 2: +8.1% | Total: $1,919
+Challenge #5: PASSED | Step 1: +10.0% | Step 2: +6.3% | Total: $1,698
+Challenge #6: PASSED | Step 1: +10.2% | Step 2: +7.1% | Total: $1,800
+Challenge #7: PASSED | Step 1: +10.3% | Step 2: +7.1% | Total: $1,808
+Challenge #8: PASSED | Step 1: +15.0% | Step 2: +11.8% | Total: $2,858
+Challenge #9: PASSED | Step 1: +10.8% | Step 2: +11.8% | Total: $2,388
+Challenge #10: PASSED | Step 1: +11.6% | Step 2: +8.1% | Total: $2,065
+Challenge #11: PASSED | Step 1: +10.0% | Step 2: +7.8% | Total: $1,856
+Challenge #12: PASSED | Step 1: +10.5% | Step 2: +5.3% | Total: $1,643
+Challenge #13: PASSED | Step 1: +10.8% | Step 2: +11.5% | Total: $2,356
+Challenge #14: PASSED | Step 1: +11.4% | Step 2: +15.2% | Total: $2,838
+Challenge #15: PASSED | Step 1: +10.4% | Step 2: +6.6% | Total: $1,765
+Challenge #16: PASSED | Step 1: +10.8% | Step 2: +6.3% | Total: $1,774
+Challenge #17: PASSED | Step 1: +10.4% | Step 2: +8.8% | Total: $2,012
+Challenge #18: FAILED | Step 1: +10.3% | Failed at: Step 2
 
 TRADING STATISTICS:
 -------------------
-Total Trades: 555
-Winning Trades: 460
-Losing Trades: 95
-Win Rate: 82.9%
-Average R per Trade: +0.41R
+Total Trades: 515
+Winning Trades: 442
+Losing Trades: 73
+Win Rate: 85.8%
+Average R per Trade: +0.47R
 Best Trade: +1.3R (CHF_JPY)
 Worst Trade: -1.0R
 
 PROFITABILITY ANALYSIS:
 -----------------------
-Gross Profit: $+30,207.48
-Gross Loss: $-8,626.14
-Net Profit: $+21,581.34
+Gross Profit: $+39,916.78
+Gross Loss: $-9,115.16
+Net Profit: $+30,801.62
 
 EARNING POTENTIAL:
 ------------------
-TOTAL FROM 12 PASSED CHALLENGES: $21,826.14
+TOTAL FROM 15 PASSED CHALLENGES: $30,419.15
 
 SUCCESS CRITERIA CHECK:
 -----------------------
-Minimum 14 Challenges Passed: NO (12 passed, need 2 more)
+Minimum 14 Challenges Passed: YES (15 passed)
 Maximum 2 Challenges Failed: NO (3 failed, 1 over limit)
 
 *** CRITERIA NOT MET - OPTIMIZATION REQUIRED ***

@@ -30,7 +30,7 @@ class FTMO10KConfig:
     total_dd_emergency_pct: float = 7.0  # Emergency mode at 7% total DD
 
     # === POSITION SIZING (Match /backtest command) ===
-    risk_per_trade_pct: float = 1.2000000000000006  # Match /backtest command (1% = $100 per trade on 10K)
+    risk_per_trade_pct: float = 1.1  # Match /backtest command (1% = $100 per trade on 10K)
     max_risk_aggressive_pct: float = 1.0  # Aggressive mode: 1%
     max_risk_normal_pct: float = 0.75  # Normal mode: 0.75%
     max_risk_conservative_pct: float = 0.5  # Conservative mode: 0.5%
