@@ -77,7 +77,7 @@ class PendingSetup:
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
 from config import SIGNAL_MODE, MIN_CONFLUENCE_STANDARD, MIN_CONFLUENCE_AGGRESSIVE
-from symbol_mapping import ALL_TRADABLE_FTMO, ftmo_to_oanda, oanda_to_ftmo
+from symbol_mapping import ALL_TRADABLE_OANDA, ftmo_to_oanda, oanda_to_ftmo
 
 
 MT5_SERVER = os.getenv("MT5_SERVER", "")
@@ -88,7 +88,7 @@ SCAN_INTERVAL_HOURS = int(os.getenv("SCAN_INTERVAL_HOURS", "4"))
 # Use same confluence as backtest (4/7 standard, 2/7 aggressive)
 MIN_CONFLUENCE = MIN_CONFLUENCE_STANDARD if SIGNAL_MODE == "standard" else MIN_CONFLUENCE_AGGRESSIVE
 
-TRADABLE_SYMBOLS = ALL_TRADABLE_FTMO
+TRADABLE_SYMBOLS = ALL_TRADABLE_OANDA  # Trade all 42 assets
 
 log = setup_logger("tradr", log_file="logs/tradr_live.log")
 running = True

@@ -41,15 +41,17 @@ def backtest_live_bot(
     
     Returns comprehensive results with challenge pass/fail.
     """
+    from symbol_mapping import ALL_TRADABLE_OANDA
+    
     if symbols is None:
-        # Use only whitelisted assets from FTMO config
-        symbols = FTMO_CONFIG.whitelist_assets
+        # Use all tradable assets (42 total)
+        symbols = ALL_TRADABLE_OANDA
     
     print("\n" + "=" * 80)
     print("MAIN_LIVE_BOT BACKTEST - Historical Trade Analysis")
     print("=" * 80)
     print(f"Period: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}")
-    print(f"Symbols: {len(symbols)} (FTMO whitelist only)")
+    print(f"Symbols: {len(symbols)} (all tradable assets)")
     print(f"Min Confluence: {FTMO_CONFIG.min_confluence_score}/7")
     print(f"Min Quality Factors: {FTMO_CONFIG.min_quality_factors}")
     print(f"Risk per trade: {FTMO_CONFIG.risk_per_trade_pct}%")

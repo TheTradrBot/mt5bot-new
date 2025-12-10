@@ -1,12 +1,12 @@
 
 #!/usr/bin/env python3
 """
-Backtest main_live_bot.py for all FTMO whitelist assets.
+Backtest main_live_bot.py for all assets (like Discord /backtest command).
 """
 
 from datetime import datetime, timedelta
 from backtest_live_bot import backtest_live_bot
-from ftmo_config import FTMO_CONFIG
+from symbol_mapping import ALL_TRADABLE_OANDA
 
 
 def main():
@@ -15,18 +15,18 @@ def main():
     end_date = datetime(2025, 11, 30)
     
     print(f"\n{'='*80}")
-    print(f"BACKTESTING MAIN_LIVE_BOT.PY - ALL FTMO ASSETS")
+    print(f"BACKTESTING MAIN_LIVE_BOT.PY - ALL ASSETS")
     print(f"Period: Jan 2025 - Nov 2025")
     print(f"Start: {start_date.strftime('%Y-%m-%d')}")
     print(f"End: {end_date.strftime('%Y-%m-%d')}")
-    print(f"Assets: {len(FTMO_CONFIG.whitelist_assets)} (FTMO whitelist)")
+    print(f"Assets: {len(ALL_TRADABLE_OANDA)} (all tradable)")
     print(f"{'='*80}\n")
     
-    # Run the backtest (uses FTMO whitelist symbols from ftmo_config.py)
+    # Run the backtest with all tradable assets
     result = backtest_live_bot(
         start_date=start_date,
         end_date=end_date,
-        symbols=None  # Uses FTMO_CONFIG.whitelist_assets (all 10 symbols)
+        symbols=ALL_TRADABLE_OANDA  # Use all 42 assets
     )
     
     if result.get("total_trades", 0) == 0:
@@ -39,7 +39,7 @@ def main():
     
     # Print summary
     print("\n" + "="*80)
-    print("BACKTEST SUMMARY - ALL FTMO ASSETS")
+    print("BACKTEST SUMMARY - ALL ASSETS")
     print("="*80)
     print(f"Period: {result['period']}")
     print(f"Total Trades: {result['total_trades']}")
