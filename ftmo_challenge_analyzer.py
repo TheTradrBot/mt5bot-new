@@ -752,7 +752,7 @@ class ChallengeSequencer:
         profit_target_pct: float,
         challenge_num: int,
     ) -> Tuple[StepResult, int]:
-        """Run a single challenge step."""
+        """Run a single challenge step with dynamic lot sizing."""
         balance = starting_balance
         peak_balance = starting_balance
         daily_start_balance = starting_balance
@@ -768,8 +768,8 @@ class ChallengeSequencer:
         max_daily_loss = starting_balance * (self.MAX_DAILY_LOSS_PCT / 100)
         max_total_dd = starting_balance * (self.MAX_DRAWDOWN_PCT / 100)
         
-        risk_per_trade_pct = self.config.risk_per_trade_pct
-        risk_per_trade_usd = starting_balance * (risk_per_trade_pct / 100)
+        win_streak = 0
+        loss_streak = 0
         
         for trade in trades:
             trades_used += 1
@@ -792,9 +792,36 @@ class ChallengeSequencer:
             
             trading_days.add(trade_day)
             
+            current_daily_loss = max(0, daily_start_balance - balance)
+            current_daily_loss_pct = (current_daily_loss / starting_balance) * 100
+            current_profit_pct = ((balance - starting_balance) / starting_balance) * 100
+            current_dd = max(0, peak_balance - balance)
+            current_dd_pct = (current_dd / starting_balance) * 100
+            
+            if self.config.use_dynamic_lot_sizing:
+                dynamic_risk_pct = self.config.get_dynamic_risk_pct(
+                    confluence_score=trade.confluence_score,
+                    win_streak=win_streak,
+                    loss_streak=loss_streak,
+                    current_profit_pct=current_profit_pct,
+                    daily_loss_pct=current_daily_loss_pct,
+                    total_dd_pct=current_dd_pct,
+                )
+                risk_per_trade_usd = starting_balance * (dynamic_risk_pct / 100)
+            else:
+                risk_per_trade_pct = self.config.risk_per_trade_pct
+                risk_per_trade_usd = starting_balance * (risk_per_trade_pct / 100)
+            
             bt_trade = self._convert_trade(trade, challenge_num, step_num, risk_per_trade_usd)
             step_trades.append(bt_trade)
             self.all_backtest_trades.append(bt_trade)
+            
+            if bt_trade.result == "WIN":
+                win_streak += 1
+                loss_streak = 0
+            elif bt_trade.result == "LOSS":
+                loss_streak += 1
+                win_streak = 0
             
             balance += bt_trade.profit_loss_usd
             

@@ -86,6 +86,27 @@ class FTMO10KConfig:
     profit_ultra_safe_threshold_pct: float = 9.0  # Switch to ultra-safe at 9% profit (allows faster Step 1 completion)
     ultra_safe_risk_pct: float = 0.25  # Use 0.25% risk in ultra-safe mode
 
+    # === DYNAMIC LOT SIZING SETTINGS ===
+    use_dynamic_lot_sizing: bool = True  # Enable dynamic position sizing
+    
+    # Confluence-based scaling (higher confluence = larger position)
+    confluence_base_score: int = 4  # Base confluence score for 1.0x multiplier
+    confluence_scale_per_point: float = 0.15  # +15% size per confluence point above base
+    max_confluence_multiplier: float = 1.5  # Cap at 1.5x for highest confluence
+    min_confluence_multiplier: float = 0.6  # Floor at 0.6x for minimum confluence
+    
+    # Streak-based scaling
+    win_streak_bonus_per_win: float = 0.05  # +5% per consecutive win
+    max_win_streak_bonus: float = 0.20  # Cap at +20% bonus
+    loss_streak_reduction_per_loss: float = 0.10  # -10% per consecutive loss
+    max_loss_streak_reduction: float = 0.40  # Cap at -40% reduction
+    
+    # Equity curve scaling
+    equity_boost_threshold_pct: float = 3.0  # Boost size after 3% profit
+    equity_boost_multiplier: float = 1.10  # +10% size when profitable
+    equity_reduce_threshold_pct: float = 2.0  # Reduce size after 2% loss
+    equity_reduce_multiplier: float = 0.80  # -20% size when in drawdown
+
     # === ASSET WHITELIST (Top 10 Performers from Backtest) ===
     # Based on Jan-Nov 2024 backtest with 5/7 confluence filter
     # Performance metrics: Win Rate (WR%) and average R-multiple
@@ -187,6 +208,134 @@ class FTMO10KConfig:
                 return True
 
         return False
+
+    def get_dynamic_lot_size_multiplier(
+        self,
+        confluence_score: int,
+        win_streak: int = 0,
+        loss_streak: int = 0,
+        current_profit_pct: float = 0.0,
+        daily_loss_pct: float = 0.0,
+        total_dd_pct: float = 0.0,
+    ) -> float:
+        """
+        Calculate dynamic lot size multiplier based on multiple factors.
+        
+        This optimizes position sizing to:
+        - Increase size on high-confluence (high probability) trades
+        - Scale up during winning streaks
+        - Scale down during losing streaks  
+        - Adjust based on equity curve (profit/drawdown state)
+        
+        Args:
+            confluence_score: Trade confluence score (1-7)
+            win_streak: Current consecutive wins (0+)
+            loss_streak: Current consecutive losses (0+)
+            current_profit_pct: Current profit as % of starting balance
+            daily_loss_pct: Today's loss as % (positive = loss)
+            total_dd_pct: Total drawdown as % (positive = drawdown)
+            
+        Returns:
+            Multiplier to apply to base risk (e.g., 1.2 = 20% larger position)
+        """
+        if not self.use_dynamic_lot_sizing:
+            return 1.0
+        
+        multiplier = 1.0
+        
+        # 1. Confluence-based scaling
+        confluence_diff = confluence_score - self.confluence_base_score
+        confluence_mult = 1.0 + (confluence_diff * self.confluence_scale_per_point)
+        confluence_mult = max(self.min_confluence_multiplier, 
+                             min(self.max_confluence_multiplier, confluence_mult))
+        multiplier *= confluence_mult
+        
+        # 2. Win streak bonus
+        if win_streak > 0:
+            streak_bonus = min(win_streak * self.win_streak_bonus_per_win, 
+                              self.max_win_streak_bonus)
+            multiplier *= (1.0 + streak_bonus)
+        
+        # 3. Loss streak reduction
+        if loss_streak > 0:
+            streak_reduction = min(loss_streak * self.loss_streak_reduction_per_loss,
+                                  self.max_loss_streak_reduction)
+            multiplier *= (1.0 - streak_reduction)
+        
+        # 4. Equity curve adjustment
+        if current_profit_pct >= self.equity_boost_threshold_pct:
+            multiplier *= self.equity_boost_multiplier
+        elif current_profit_pct <= -self.equity_reduce_threshold_pct:
+            multiplier *= self.equity_reduce_multiplier
+        
+        # 5. Safety caps based on drawdown
+        if daily_loss_pct >= self.daily_loss_warning_pct:
+            multiplier *= 0.7  # Force 30% reduction when approaching daily limit
+        if total_dd_pct >= self.total_dd_warning_pct:
+            multiplier *= 0.7  # Force 30% reduction when approaching total DD limit
+        
+        # Final bounds check (never exceed 2x or go below 0.3x base risk)
+        multiplier = max(0.3, min(2.0, multiplier))
+        
+        return round(multiplier, 3)
+
+    def get_dynamic_risk_pct(
+        self,
+        confluence_score: int,
+        win_streak: int = 0,
+        loss_streak: int = 0,
+        current_profit_pct: float = 0.0,
+        daily_loss_pct: float = 0.0,
+        total_dd_pct: float = 0.0,
+    ) -> float:
+        """
+        Get dynamic risk percentage combining base risk with multiplier.
+        
+        Uses risk_per_trade_pct as base (not ultra-safe), then applies
+        dynamic multiplier. Safety adjustments are built into the multiplier.
+        
+        Args:
+            confluence_score: Trade confluence score (1-7)
+            win_streak: Current consecutive wins
+            loss_streak: Current consecutive losses
+            current_profit_pct: Current profit as % of starting balance
+            daily_loss_pct: Today's loss as %
+            total_dd_pct: Total drawdown as %
+            
+        Returns:
+            Risk percentage to use for this trade
+        """
+        # Use normal risk as base (not ultra-safe) for dynamic sizing
+        base_risk = self.risk_per_trade_pct
+        
+        # Reduce base risk in emergency scenarios (approaching limits)
+        if daily_loss_pct >= self.daily_loss_reduce_pct:
+            base_risk = self.max_risk_conservative_pct
+        elif daily_loss_pct >= self.daily_loss_warning_pct:
+            base_risk = self.max_risk_normal_pct
+        elif total_dd_pct >= self.total_dd_emergency_pct:
+            base_risk = self.max_risk_conservative_pct
+        elif total_dd_pct >= self.total_dd_warning_pct:
+            base_risk = self.max_risk_normal_pct
+        
+        # Apply dynamic multiplier
+        multiplier = self.get_dynamic_lot_size_multiplier(
+            confluence_score=confluence_score,
+            win_streak=win_streak,
+            loss_streak=loss_streak,
+            current_profit_pct=current_profit_pct,
+            daily_loss_pct=daily_loss_pct,
+            total_dd_pct=total_dd_pct,
+        )
+        
+        dynamic_risk = base_risk * multiplier
+        
+        # Hard cap at max aggressive risk * 1.5 for highest confluence/streak trades
+        dynamic_risk = min(dynamic_risk, self.max_risk_aggressive_pct * 1.5)
+        # Floor at minimum tradeable risk
+        dynamic_risk = max(dynamic_risk, 0.25)
+        
+        return round(dynamic_risk, 4)
 
 
 # Global configuration instance
