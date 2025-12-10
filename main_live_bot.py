@@ -78,6 +78,7 @@ class PendingSetup:
 
 from config import SIGNAL_MODE, MIN_CONFLUENCE_STANDARD, MIN_CONFLUENCE_AGGRESSIVE
 from symbol_mapping import ALL_TRADABLE_OANDA, ftmo_to_oanda, oanda_to_ftmo
+from ftmo_config import FTMO_CONFIG
 
 
 MT5_SERVER = os.getenv("MT5_SERVER", "")
@@ -85,10 +86,10 @@ MT5_LOGIN = int(os.getenv("MT5_LOGIN", "0"))
 MT5_PASSWORD = os.getenv("MT5_PASSWORD", "")
 SCAN_INTERVAL_HOURS = int(os.getenv("SCAN_INTERVAL_HOURS", "4"))
 
-# Use same confluence as backtest (4/7 standard, 2/7 aggressive)
-MIN_CONFLUENCE = MIN_CONFLUENCE_STANDARD if SIGNAL_MODE == "standard" else MIN_CONFLUENCE_AGGRESSIVE
+# Use EXACT same confluence as backtest_live_bot.py
+MIN_CONFLUENCE = FTMO_CONFIG.min_confluence_score  # 5/7 as per ftmo_config.py
 
-TRADABLE_SYMBOLS = ALL_TRADABLE_OANDA  # Trade all 42 assets
+TRADABLE_SYMBOLS = ALL_TRADABLE_OANDA  # Trade all 42 assets (same as backtest)
 
 log = setup_logger("tradr", log_file="logs/tradr_live.log")
 running = True
@@ -389,11 +390,13 @@ class LiveTradingBot:
         has_structure = flags.get("structure", False)
         has_htf_bias = flags.get("htf_bias", False)
         
+        # EXACT same quality factor calculation as backtest_live_bot.py
         quality_factors = sum([has_location, has_fib, has_liquidity, has_structure, has_htf_bias])
         
-        if has_rr and confluence_score >= FTMO_CONFIG.min_confluence_score and quality_factors >= FTMO_CONFIG.min_quality_factors:
+        # EXACT same active signal criteria as backtest_live_bot.py
+        if has_rr and confluence_score >= MIN_CONFLUENCE and quality_factors >= FTMO_CONFIG.min_quality_factors:
             status = "active"
-        elif confluence_score >= FTMO_CONFIG.min_confluence_score:
+        elif confluence_score >= MIN_CONFLUENCE:
             status = "watching"
         else:
             status = "scan_only"
@@ -433,9 +436,11 @@ class LiveTradingBot:
         
         log.info(f"[{symbol}] Entry proximity OK: {entry_distance_r:.2f}R from current price")
         
+        # EXACT same SL validation and adjustment as backtest_live_bot.py
         pip_size = get_pip_size(symbol)
         sl_pips = abs(entry - sl) / pip_size
         
+        # Min SL check - adjust if needed (same as backtest)
         if sl_pips < FTMO_CONFIG.min_sl_pips:
             log.info(f"[{symbol}] SL too tight: {sl_pips:.1f} pips (min: {FTMO_CONFIG.min_sl_pips})")
             if direction == "bullish":
@@ -446,10 +451,12 @@ class LiveTradingBot:
             sl_pips = FTMO_CONFIG.min_sl_pips
             log.info(f"[{symbol}] SL adjusted to minimum: {sl:.5f} ({sl_pips:.1f} pips)")
         
+        # Max SL check - reject if too wide (same as backtest)
         if sl_pips > FTMO_CONFIG.max_sl_pips:
             log.info(f"[{symbol}] SL too wide: {sl_pips:.1f} pips (max: {FTMO_CONFIG.max_sl_pips}) - skipping")
             return None
         
+        # ATR-based SL validation (same as backtest)
         atr = self._calculate_atr(daily_candles, period=14)
         if atr > 0:
             sl_atr_ratio = abs(entry - sl) / atr
@@ -467,6 +474,7 @@ class LiveTradingBot:
                 log.info(f"[{symbol}] SL too wide in ATR terms: {sl_atr_ratio:.2f} ATR (max: {FTMO_CONFIG.max_sl_atr_ratio}) - skipping")
                 return None
         
+        # Calculate TPs using EXACT same R multiples as backtest
         risk = abs(entry - sl)
         if direction == "bullish":
             tp1 = entry + (risk * FTMO_CONFIG.tp1_r_multiple)
@@ -1110,12 +1118,14 @@ class LiveTradingBot:
             original_volume = setup.lot_size
             current_volume = pos.volume
             
+            # EXACT same partial close volumes as backtest_live_bot.py
             if CHALLENGE_MODE and self.challenge_manager:
                 tp1_vol, tp2_vol, tp3_vol = self.challenge_manager.get_partial_close_volumes(original_volume)
             else:
-                tp1_vol = round(original_volume * 0.33, 2)
-                tp2_vol = round(original_volume * 0.33, 2)
-                tp3_vol = round(original_volume * 0.34, 2)
+                # Match backtest: 45% TP1, 30% TP2, 25% TP3
+                tp1_vol = round(original_volume * FTMO_CONFIG.tp1_close_pct, 2)
+                tp2_vol = round(original_volume * FTMO_CONFIG.tp2_close_pct, 2)
+                tp3_vol = round(original_volume * FTMO_CONFIG.tp3_close_pct, 2)
             
             tp1_vol = max(0.01, tp1_vol)
             tp2_vol = max(0.01, tp2_vol)
@@ -1319,7 +1329,7 @@ class LiveTradingBot:
         
         log.info("=" * 70)
         log.info("SCAN COMPLETE")
-        log.info(f"  Symbols scanned: {len(TRADABLE_SYMBOLS)}")
+        log.info(f"  Symbols scanned: {len(available_symbols)}/{len(TRADABLE_SYMBOLS)}")
         log.info(f"  Active signals: {signals_found}")
         log.info(f"  Pending orders placed: {orders_placed}")
         
