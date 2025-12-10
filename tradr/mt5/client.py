@@ -690,3 +690,87 @@ class MT5Client:
         """Get pending orders placed by this bot (by magic number)."""
         all_orders = self.get_pending_orders()
         return [o for o in all_orders if o.magic == self.MAGIC_NUMBER]
+    
+    def place_market_order(
+        self,
+        symbol: str,
+        direction: str,
+        volume: float,
+        sl: float,
+        tp: float,
+        deviation: int = 20,
+    ) -> TradeResult:
+        """
+        Place a market order with immediate execution.
+        
+        Args:
+            symbol: Trading symbol
+            direction: 'bullish' for buy, 'bearish' for sell
+            volume: Lot size
+            sl: Stop loss price
+            tp: Take profit price
+            deviation: Max price deviation in points
+            
+        Returns:
+            TradeResult with success status and order details
+        """
+        if not self.connected:
+            return TradeResult(success=False, error="Not connected")
+        
+        mt5 = self._import_mt5()
+        
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            return TradeResult(success=False, error=f"Cannot get tick for {symbol}")
+        
+        symbol_info = mt5.symbol_info(symbol)
+        if symbol_info is None:
+            return TradeResult(success=False, error=f"Cannot get symbol info for {symbol}")
+        
+        lot_step = symbol_info.volume_step if hasattr(symbol_info, 'volume_step') else 0.01
+        min_lot = symbol_info.volume_min if hasattr(symbol_info, 'volume_min') else 0.01
+        max_lot = symbol_info.volume_max if hasattr(symbol_info, 'volume_max') else 100.0
+        
+        normalized_volume = max(min_lot, round(volume / lot_step) * lot_step)
+        normalized_volume = min(normalized_volume, max_lot)
+        
+        if direction.lower() == "bullish":
+            order_type = mt5.ORDER_TYPE_BUY
+            price = tick.ask
+        else:
+            order_type = mt5.ORDER_TYPE_SELL
+            price = tick.bid
+        
+        request = {
+            "action": mt5.TRADE_ACTION_DEAL,
+            "symbol": symbol,
+            "volume": normalized_volume,
+            "type": order_type,
+            "price": price,
+            "sl": sl,
+            "tp": tp,
+            "deviation": deviation,
+            "magic": self.MAGIC_NUMBER,
+            "comment": self.COMMENT,
+            "type_time": mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        
+        result = mt5.order_send(request)
+        
+        if result is None:
+            return TradeResult(success=False, error="Order send returned None")
+        
+        if result.retcode != mt5.TRADE_RETCODE_DONE:
+            return TradeResult(
+                success=False,
+                error=f"Market order failed: {result.comment} (code: {result.retcode})"
+            )
+        
+        return TradeResult(
+            success=True,
+            order_id=result.order,
+            deal_id=result.deal,
+            price=result.price,
+            volume=result.volume,
+        )

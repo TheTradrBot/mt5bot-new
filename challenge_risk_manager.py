@@ -114,25 +114,25 @@ class ChallengeConfig:
     max_total_drawdown_pct: float = 10.0
     
     max_risk_per_trade_pct: float = 0.75
-    max_cumulative_risk_pct: float = 3.5
-    max_concurrent_trades: int = 5
-    max_pending_orders: int = 6
+    max_cumulative_risk_pct: float = 2.5
+    max_concurrent_trades: int = 4
+    max_pending_orders: int = 5
     
-    tp1_close_pct: float = 0.45
-    tp2_close_pct: float = 0.30
+    tp1_close_pct: float = 0.40
+    tp2_close_pct: float = 0.35
     tp3_close_pct: float = 0.25
     
     daily_loss_warning_pct: float = 2.5
     daily_loss_reduce_pct: float = 3.5
-    daily_loss_halt_pct: float = 4.5
+    daily_loss_halt_pct: float = 4.2
     total_dd_warning_pct: float = 5.0
-    total_dd_emergency_pct: float = 8.0
+    total_dd_emergency_pct: float = 7.0
     
     protection_loop_interval_sec: float = 30.0
-    pending_order_max_age_hours: float = 48.0
+    pending_order_max_age_hours: float = 6.0
     
     profit_ultra_safe_threshold_pct: float = 8.0
-    ultra_safe_risk_pct: float = 0.3
+    ultra_safe_risk_pct: float = 0.25
 
 
 class ChallengeRiskManager:
