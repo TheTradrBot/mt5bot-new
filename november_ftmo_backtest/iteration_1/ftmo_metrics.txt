@@ -1,0 +1,18 @@
+FTMO Challenge Backtest - Iteration 1
+==================================================
+
+Overall: PASSED
+
+Phase 1:
+  Profit: $1,140.00 (11.40%)
+  Max Daily Loss: $0.00
+  Max Drawdown: $0.00
+  Trading Days: 10
+  Status: PASSED
+
+Phase 2:
+  Profit: $751.39 (6.74%)
+  Max Daily Loss: $105.83
+  Max Drawdown: $42.33
+  Trading Days: 5
+  Status: PASSED

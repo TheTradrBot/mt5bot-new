@@ -1,0 +1,22 @@
+{
+  "optimized_params": {
+    "risk_per_trade_pct": 0.9500000000000014,
+    "min_confluence_score": 4,
+    "min_quality_factors": 2,
+    "tp1_r_multiple": 1.5,
+    "tp2_r_multiple": 3.0,
+    "tp3_r_multiple": 5.0,
+    "max_entry_distance_r": 2.0,
+    "min_sl_atr_ratio": 1.0,
+    "max_sl_atr_ratio": 3.0,
+    "max_concurrent_trades": 2,
+    "daily_loss_halt_pct": 4.2
+  },
+  "iterations_to_pass": 1,
+  "final_balance": 11891.393,
+  "total_profit": 1891.393,
+  "total_profit_pct": 18.91393,
+  "phase1_profit": 1140.0,
+  "phase2_profit": 751.393,
+  "timestamp": "2025-12-10T23:15:55.126408"
+}

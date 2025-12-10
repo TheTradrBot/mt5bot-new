@@ -1,0 +1,74 @@
+[config] WARNING: .env file not found at /home/runner/workspace/.env
+[config] Looking in: /home/runner/workspace
+
+======================================================================
+🚀 FTMO SELF-OPTIMIZING BACKTEST SYSTEM
+======================================================================
+Target: Pass BOTH Phase 1 (10% profit) AND Phase 2 (5% profit)
+Starting Balance: $10,000
+Max Iterations: 20
+======================================================================
+
+======================================================================
+🔄 ITERATION 1/20
+======================================================================
+Current Parameters:
+  - Risk per trade: 0.95%
+  - Min confluence: 4/7
+  - TP multiples: 1.5R / 3.0R / 5.0R
+  - Max concurrent trades: 2
+
+📊 Running November 2024 backtest...
+   Found 51 trades
+🔍 Simulating FTMO Challenge...
+
+======================================================================
+🔄 ITERATION 1: FTMO Challenge Results
+   Starting Balance: $10,000.00
+======================================================================
+
+======================================================================
+📊 PHASE 1 RESULTS (Starting Balance: $10,000.00)
+======================================================================
+   Ending Balance: $11,140.00
+   Profit: $1,140.00 (11.40%) - Target: $1,000.00 ✅
+   Max Daily Loss: $0.00 (0.00%) - Limit: $500.00 (5%) ✅
+   Max Drawdown: $0.00 (0.00%) - Limit: $1,000.00 (10%) ✅
+   Trading Days: 10 - Minimum: 4 ✅
+   Win Rate: 58.3%
+   Total Trades: 12
+   STATUS: ✅ PASSED
+======================================================================
+
+======================================================================
+📊 PHASE 2 RESULTS (Starting Balance: $11,140.00)
+======================================================================
+   Ending Balance: $11,891.39
+   Profit: $751.39 (6.74%) - Target: $557.00 ✅
+   Max Daily Loss: $105.83 (0.95%) - Limit: $557.00 (5%) ✅
+   Max Drawdown: $42.33 (0.38%) - Limit: $1,114.00 (10%) ✅
+   Trading Days: 5 - Minimum: 4 ✅
+   Win Rate: 80.0%
+   Total Trades: 5
+   STATUS: ✅ PASSED
+======================================================================
+
+======================================================================
+🎉🎉🎉 SUCCESS! Bot passed COMPLETE FTMO CHALLENGE! 🎉🎉🎉
+======================================================================
+✅ Phase 1: PASSED
+✅ Phase 2: PASSED
+💰 Total Profit: $1,891.39 (18.91%)
+💵 Final Balance: $11,891.39
+======================================================================
+   📈 New best score: 2296.22
+
+🎉 OPTIMIZATION COMPLETE - BOTH PHASES PASSED!
+
+✅ Winning configuration saved to november_ftmo_backtest/winning_configuration/optimized_config.json
+
+======================================================================
+OPTIMIZATION COMPLETE
+======================================================================
+✅ Successfully found configuration that passes both FTMO phases!
+======================================================================

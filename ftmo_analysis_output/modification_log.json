@@ -831,5 +831,68 @@
       "risk_per_trade_pct -> 1.200000000000001"
     ],
     "timestamp": "2025-12-10T23:15:14.767497"
+  },
+  {
+    "iteration": 8,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter8_20251210_231519.py",
+    "changes": [
+      "risk_per_trade_pct -> 1.0500000000000012"
+    ],
+    "timestamp": "2025-12-10T23:15:19.385784"
+  },
+  {
+    "iteration": 9,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter9_20251210_231524.py",
+    "changes": [
+      "risk_per_trade_pct -> 1.3000000000000012"
+    ],
+    "timestamp": "2025-12-10T23:15:24.081682"
+  },
+  {
+    "iteration": 10,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter10_20251210_231528.py",
+    "changes": [
+      "risk_per_trade_pct -> 1.1500000000000012"
+    ],
+    "timestamp": "2025-12-10T23:15:28.550393"
+  },
+  {
+    "iteration": 11,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter11_20251210_231532.py",
+    "changes": [
+      "risk_per_trade_pct -> 1.0000000000000013"
+    ],
+    "timestamp": "2025-12-10T23:15:32.782520"
+  },
+  {
+    "iteration": 12,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter12_20251210_231536.py",
+    "changes": [
+      "risk_per_trade_pct -> 1.2500000000000013"
+    ],
+    "timestamp": "2025-12-10T23:15:36.967407"
+  },
+  {
+    "iteration": 13,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter13_20251210_231541.py",
+    "changes": [
+      "risk_per_trade_pct -> 1.1000000000000014"
+    ],
+    "timestamp": "2025-12-10T23:15:41.153032"
+  },
+  {
+    "iteration": 14,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter14_20251210_231545.py",
+    "changes": [
+      "risk_per_trade_pct -> 0.9500000000000014"
+    ],
+    "timestamp": "2025-12-10T23:15:45.435284"
   }
 ]
