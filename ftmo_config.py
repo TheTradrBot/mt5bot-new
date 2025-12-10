@@ -22,7 +22,7 @@ class FTMO10KConfig:
     """
     
     # === ACCOUNT SETTINGS ===
-    account_size: float = 100000.0  # FTMO 10K challenge size
+    account_size: float = 100000.0  # FTMO 100K challenge size (10K uses 10000.0)
     max_daily_loss_pct: float = 5.0  # FTMO rule: Max 5% daily loss
     max_total_drawdown_pct: float = 10.0  # FTMO rule: Max 10% total drawdown
     profit_target_pct: float = 10.0  # Phase 1 target: 10%
@@ -35,8 +35,8 @@ class FTMO10KConfig:
     max_trades_per_week: int = 10  # Weekly limit for quality over quantity
     
     # === SAFETY BUFFERS (Never get close to FTMO limits) ===
-    safety_buffer_daily_pct: float = 3.0  # Stop trading at -2% (vs -5% limit)
-    safety_buffer_total_pct: float = 6.0  # Stop trading at -4% (vs -10% limit)
+    safety_buffer_daily_pct: float = 3.0  # Stop trading at -3% daily loss (vs -5% limit)
+    safety_buffer_total_pct: float = 6.0  # Stop trading at -6% total loss (vs -10% limit)
     max_losing_streak: int = 3  # Pause after 3 consecutive losses
     
     # === CONFLUENCE & QUALITY REQUIREMENTS ===
