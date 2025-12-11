@@ -1,0 +1,196 @@
+Windows PowerShell
+Copyright (C) 2016 Microsoft Corporation. All rights reserved.
+
+PS C:\Users\Administrator> cd C:\mt5bot-new
+>> git pull origin main
+>> cd C:\mt5bot-new
+>> python main_live_bot.py
+remote: Enumerating objects: 15, done.
+remote: Counting objects: 100% (15/15), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 10 (delta 8), reused 10 (delta 8), pack-reused 0 (from 0)
+Unpacking objects: 100% (10/10), 6.80 KiB | 142.00 KiB/s, done.
+From https://github.com/TheTradrBot/mt5bot-new
+ * branch            main       -> FETCH_HEAD
+   b613227..1c10c62  main       -> origin/main
+Auto-merging ftmo_challenge_analyzer.py
+Auto-merging ftmo_config.py
+hint: Waiting for your editor to close the file... unix2dos: converting file C:/mt5bot-new/.git/MERGE_MSG to DOS format.
+..
+dos2unix: converting file C:/mt5bot-new/.git/MERGE_MSG to Unix format...
+Merge made by the 'ort' strategy.
+ ...n-live-bot-py-config-Loaded-e_1765478336622.txt | 553 +++++++++++++++++++++
+ ftmo_challenge_analyzer.py                         |   2 +-
+ ftmo_config.py                                     |  12 +-
+ main_live_bot.py                                   |   8 +-
+ 4 files changed, 564 insertions(+), 11 deletions(-)
+ create mode 100644 attached_assets/Pasted-PS-C-mt5bot-new-python-main-live-bot-py-config-Loaded-e_1765478336622.txt
+[config] ✓ Loaded environment from C:\mt5bot-new\.env
+2025-12-11 10:59:43 | INFO     | tradr | Loaded 1 pending setups from file
+2025-12-11 10:59:43 | INFO     | tradr | Challenge already active (Phase 1) - continuing...
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | TRADR BOT - LIVE TRADING (FTMO COMPLIANT)
+2025-12-11 10:59:43 | INFO     | tradr | *** CHALLENGE MODE: ELITE PROTECTION ENABLED ***
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | Using SAME strategy as backtests (strategy_core.py)
+2025-12-11 10:59:43 | INFO     | tradr | FTMO Risk Limits:
+2025-12-11 10:59:43 | INFO     | tradr |   - Max single trade risk: 0.75% (Challenge Mode)
+2025-12-11 10:59:43 | INFO     | tradr |   - Max cumulative risk: 5.0%
+2025-12-11 10:59:43 | INFO     | tradr |   - Emergency close at: 4.5% daily loss / 8% drawdown
+2025-12-11 10:59:43 | INFO     | tradr |   - Partial TPs: 45% TP1, 30% TP2, 25% TP3 (Challenge Mode)
+2025-12-11 10:59:43 | INFO     | tradr | Server:
+2025-12-11 10:59:43 | INFO     | tradr | Login: 1512190437
+2025-12-11 10:59:43 | INFO     | tradr | Scan Interval: 4 hours
+2025-12-11 10:59:43 | INFO     | tradr | Validate Interval: 10 minutes
+2025-12-11 10:59:43 | INFO     | tradr | P/L Monitor Interval: 10 seconds (elite protection)
+2025-12-11 10:59:43 | INFO     | tradr | Strategy Mode: standard
+2025-12-11 10:59:43 | INFO     | tradr | Min Confluence: 3/7
+2025-12-11 10:59:43 | INFO     | tradr | Symbols: 34
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | CONNECTING TO MT5
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+[MT5] Connected: 1520835478 @ FTMO-Demo2
+[MT5] Balance: $200,000.00, Equity: $200,000.00
+2025-12-11 10:59:43 | INFO     | tradr | Connected: 1520835478 @ FTMO-Demo2
+2025-12-11 10:59:43 | INFO     | tradr | Balance: $200,000.00
+2025-12-11 10:59:43 | INFO     | tradr | Equity: $200,000.00
+2025-12-11 10:59:43 | INFO     | tradr | Leverage: 1:100
+2025-12-11 10:59:43 | INFO     | tradr |
+======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | DISCOVERING BROKER SYMBOLS
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | Broker has 131 total symbols
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_USD         (OANDA) -> EURUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ GBP_USD         (OANDA) -> GBPUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ USD_JPY         (OANDA) -> USDJPY (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ USD_CHF         (OANDA) -> USDCHF (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ USD_CAD         (OANDA) -> USDCAD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ AUD_USD         (OANDA) -> AUDUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ NZD_USD         (OANDA) -> NZDUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_GBP         (OANDA) -> EURGBP (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_JPY         (OANDA) -> EURJPY (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_CHF         (OANDA) -> EURCHF (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_AUD         (OANDA) -> EURAUD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_CAD         (OANDA) -> EURCAD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_NZD         (OANDA) -> EURNZD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ GBP_JPY         (OANDA) -> GBPJPY (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ GBP_CHF         (OANDA) -> GBPCHF (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ GBP_AUD         (OANDA) -> GBPAUD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ GBP_CAD         (OANDA) -> GBPCAD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ GBP_NZD         (OANDA) -> GBPNZD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ AUD_JPY         (OANDA) -> AUDJPY (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ AUD_CHF         (OANDA) -> AUDCHF (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ AUD_CAD         (OANDA) -> AUDCAD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ AUD_NZD         (OANDA) -> AUDNZD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ NZD_JPY         (OANDA) -> NZDJPY (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ NZD_CHF         (OANDA) -> NZDCHF (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ NZD_CAD         (OANDA) -> NZDCAD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ CAD_JPY         (OANDA) -> CADJPY (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ CAD_CHF         (OANDA) -> CADCHF (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ CHF_JPY         (OANDA) -> CHFJPY (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ XAU_USD         (OANDA) -> XAUUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ XAG_USD         (OANDA) -> XAGUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ SPX500_USD      (OANDA) -> US500.cash (FTMO fallback)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ NAS100_USD      (OANDA) -> US100.cash (FTMO fallback)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ BTC_USD         (OANDA) -> BTCUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ ETH_USD         (OANDA) -> ETHUSD (FTMO)
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | Mapped 34/34 symbols
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr |
+======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | VALIDATING SYMBOL MAPPING
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | ✓ EUR_USD -> EURUSD (digits: 5, spread: 0)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ GBP_USD -> GBPUSD (digits: 5, spread: 9)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ USD_JPY -> USDJPY (digits: 3, spread: 4)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ USD_CHF -> USDCHF (digits: 5, spread: 6)
+2025-12-11 10:59:43 | INFO     | tradr | ✓ USD_CAD -> USDCAD (digits: 5, spread: 5)
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | Syncing risk manager with MT5 account...
+[RiskManager] Syncing balance: 9738.99 -> 200000.00
+2025-12-11 10:59:43 | INFO     | tradr | Risk manager synced: Balance=$200,000.00, Equity=$200,000.00
+2025-12-11 10:59:43 | INFO     | tradr | Initializing Challenge Risk Manager (FTMO 200K COMPLIANT)...
+[RISK] Loaded state from challenge_risk_state.json
+[RISK] ======================================================================
+[RISK] CHALLENGE RISK MANAGER INITIALIZED
+[RISK]   Mode: ENABLED
+[RISK]   Phase: 1
+[RISK]   Account Size: $200,000.00
+[RISK]   Max Daily Loss: 5.0%
+[RISK]   Max Drawdown: 10.0%
+[RISK]   Max Risk/Trade: 0.9500000000000014%
+[RISK]   Max Concurrent Trades: 10
+[RISK] ======================================================================
+[RISK] Syncing initial balance: 9737.87 -> 200000.00
+2025-12-11 10:59:43 | INFO     | tradr | Challenge Risk Manager initialized with ELITE PROTECTION
+2025-12-11 10:59:43 | INFO     | tradr | Starting trading loop...
+2025-12-11 10:59:43 | INFO     | tradr | Press Ctrl+C to stop
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | MARKET SCAN - 2025-12-11 18:59 UTC
+2025-12-11 10:59:43 | INFO     | tradr | Strategy Mode: standard (Min Confluence: 3/7)
+2025-12-11 10:59:43 | INFO     | tradr | Using PENDING ORDERS (like backtest)
+2025-12-11 10:59:43 | INFO     | tradr | ======================================================================
+2025-12-11 10:59:43 | INFO     | tradr | [EUR_USD] Scanning (OANDA: EUR_USD, FTMO: EURUSD)...
+2025-12-11 10:59:44 | INFO     | tradr | [EUR_USD] BULLISH | Conf: 3/7 | Quality: 2 | Status: active
+2025-12-11 10:59:44 | INFO     | tradr | [EUR_USD] Entry too far: 1.15504 is 1.86R from current 1.17539 (max: 1.0R)
+2025-12-11 10:59:45 | INFO     | tradr | [GBP_USD] Scanning (OANDA: GBP_USD, FTMO: GBPUSD)...
+2025-12-11 10:59:45 | INFO     | tradr | [GBP_USD] BULLISH | Conf: 3/7 | Quality: 2 | Status: active
+2025-12-11 10:59:45 | INFO     | tradr | [GBP_USD] Entry too far: 1.31701 is 1.42R from current 1.34133 (max: 1.0R)
+2025-12-11 10:59:46 | INFO     | tradr | [USD_JPY] Scanning (OANDA: USD_JPY, FTMO: USDJPY)...
+2025-12-11 10:59:47 | INFO     | tradr | [USD_JPY] BULLISH | Conf: 4/7 | Quality: 2 | Status: active
+2025-12-11 10:59:47 | INFO     | tradr | [USD_JPY] Entry proximity OK: 0.24R from current price
+2025-12-11 10:59:47 | INFO     | tradr | [USD_JPY] ✓ ACTIVE SIGNAL VALIDATED!
+2025-12-11 10:59:47 | INFO     | tradr |   Direction: BULLISH
+2025-12-11 10:59:47 | INFO     | tradr |   Confluence: 4/7
+2025-12-11 10:59:47 | INFO     | tradr |   Current Price: 155.36000
+2025-12-11 10:59:47 | INFO     | tradr |   Entry: 154.75318 (0.24R away)
+2025-12-11 10:59:47 | INFO     | tradr |   SL: 152.26928 (2483.9 pips)
+2025-12-11 10:59:47 | INFO     | tradr |   TP1: 156.24352 (0.6R)
+2025-12-11 10:59:47 | INFO     | tradr |   TP2: 157.73385 (1.2R)
+2025-12-11 10:59:47 | INFO     | tradr |   TP3: 159.72097 (2.0R)
+2025-12-11 10:59:47 | INFO     | tradr |   TP4: 160.96292 (2.5R)
+2025-12-11 10:59:47 | INFO     | tradr |   TP5: 163.44682 (3.5R)
+2025-12-11 10:59:47 | INFO     | tradr | [USD_JPY] Risk calculation:
+2025-12-11 10:59:47 | INFO     | tradr |   Balance: $200000.00
+2025-12-11 10:59:47 | INFO     | tradr |   Risk %: 1.00% (daily loss: 0.0%, DD: 0.0%)
+2025-12-11 10:59:47 | INFO     | tradr |   Risk $: $2006.34
+2025-12-11 10:59:47 | INFO     | tradr |   Stop pips: 248.4
+2025-12-11 10:59:47 | INFO     | tradr |   Lot size: 1.25
+2025-12-11 10:59:47 | INFO     | tradr | [USD_JPY] Price at entry (0.24R) - using MARKET ORDER
+2025-12-11 10:59:47 | ERROR    | tradr | [USD_JPY] Market order FAILED: Market order failed: AutoTrading disabled by cli
+ent (code: 10027)
+2025-12-11 10:59:47 | INFO     | tradr | [USD_CHF] Scanning (OANDA: USD_CHF, FTMO: USDCHF)...
+2025-12-11 10:59:48 | INFO     | tradr | [USD_CHF] BEARISH | Conf: 4/7 | Quality: 3 | Status: active
+2025-12-11 10:59:48 | INFO     | tradr | [USD_CHF] Entry proximity OK: 0.77R from current price
+2025-12-11 10:59:48 | INFO     | tradr | [USD_CHF] ✓ ACTIVE SIGNAL VALIDATED!
+2025-12-11 10:59:48 | INFO     | tradr |   Direction: BEARISH
+2025-12-11 10:59:48 | INFO     | tradr |   Confluence: 4/7
+2025-12-11 10:59:48 | INFO     | tradr |   Current Price: 0.79380
+2025-12-11 10:59:48 | INFO     | tradr |   Entry: 0.80301 (0.77R away)
+2025-12-11 10:59:48 | INFO     | tradr |   SL: 0.81500 (1198.4 pips)
+2025-12-11 10:59:48 | INFO     | tradr |   TP1: 0.79582 (0.6R)
+2025-12-11 10:59:48 | INFO     | tradr |   TP2: 0.78863 (1.2R)
+2025-12-11 10:59:48 | INFO     | tradr |   TP3: 0.77904 (2.0R)
+2025-12-11 10:59:48 | INFO     | tradr |   TP4: 0.77305 (2.5R)
+2025-12-11 10:59:48 | INFO     | tradr |   TP5: 0.76107 (3.5R)
+2025-12-11 10:59:48 | INFO     | tradr | [USD_CHF] Risk calculation:
+2025-12-11 10:59:48 | INFO     | tradr |   Balance: $200000.00
+2025-12-11 10:59:48 | INFO     | tradr |   Risk %: 1.00% (daily loss: 0.0%, DD: 0.0%)
+2025-12-11 10:59:48 | INFO     | tradr |   Risk $: $1999.76
+2025-12-11 10:59:48 | INFO     | tradr |   Stop pips: 119.8
+2025-12-11 10:59:48 | INFO     | tradr |   Lot size: 1.34
+2025-12-11 10:59:48 | INFO     | tradr | [USD_CHF] Price 0.77R from entry - using PENDING ORDER
+2025-12-11 10:59:48 | INFO     | tradr | [USD_CHF] Placing PENDING ORDER:
+2025-12-11 10:59:48 | INFO     | tradr |   Direction: BEARISH
+2025-12-11 10:59:48 | INFO     | tradr |   Entry Level: 0.80301
+2025-12-11 10:59:48 | INFO     | tradr |   SL: 0.81500
+2025-12-11 10:59:48 | INFO     | tradr |   TP1: 0.79582
+2025-12-11 10:59:48 | INFO     | tradr |   TP5: 0.76107
+2025-12-11 10:59:48 | INFO     | tradr |   Lot Size: 1.34
+2025-12-11 10:59:48 | INFO     | tradr |   Expiration: 24.0 hours
+2025-12-11 10:59:48 | ERROR    | tradr | [USD_CHF] Pending order FAILED: Pending order failed: AutoTrading disabled by c
+lient (code: 10027)
+2025-12-11 10:59:48 | INFO     | tradr | [USD_CAD] Scanning (OANDA: USD_CAD, FTMO: USDCAD)...
+
