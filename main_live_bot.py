@@ -894,6 +894,57 @@ class LiveTradingBot:
         
         return True
     
+    def sync_with_mt5_state(self):
+        """
+        Comprehensive sync with MT5 state to detect manual changes.
+        
+        This function:
+        1. Detects manually cancelled pending orders
+        2. Detects manually closed positions
+        3. Cleans up stale pending_setups entries
+        4. Logs available slots for new trades
+        
+        Called at the start of each scan to ensure bot knows current state.
+        """
+        my_positions = self.mt5.get_my_positions()
+        my_pending_orders = self.mt5.get_my_pending_orders()
+        
+        position_symbols = {p.symbol for p in my_positions}
+        pending_order_tickets = {o.ticket for o in my_pending_orders}
+        
+        setups_removed = []
+        
+        for symbol, setup in list(self.pending_setups.items()):
+            broker_symbol = self.symbol_map.get(symbol, symbol)
+            
+            if setup.status == "pending":
+                if setup.order_ticket and setup.order_ticket not in pending_order_tickets:
+                    if broker_symbol not in position_symbols:
+                        log.info(f"[{symbol}] Pending order manually cancelled (ticket {setup.order_ticket}) - slot now available")
+                        setups_removed.append(symbol)
+                        
+            elif setup.status == "filled":
+                if broker_symbol not in position_symbols:
+                    log.info(f"[{symbol}] Position manually closed - slot now available")
+                    setups_removed.append(symbol)
+        
+        for symbol in setups_removed:
+            del self.pending_setups[symbol]
+        
+        if setups_removed:
+            self._save_pending_setups()
+            log.info(f"MT5 Sync: Removed {len(setups_removed)} stale setups, {len(self.pending_setups)} active setups remaining")
+        
+        current_positions = len(my_positions)
+        current_pending = len([s for s in self.pending_setups.values() if s.status == "pending"])
+        max_exposure = FTMO_CONFIG.max_pending_orders
+        available_slots = max_exposure - current_positions - current_pending
+        
+        if available_slots > 0:
+            log.info(f"MT5 Sync: {available_slots} slots available (positions: {current_positions}, pending: {current_pending}, max: {max_exposure})")
+        
+        return available_slots
+
     def check_position_updates(self):
         """
         Check for position closures (TP/SL hits) and update state.
@@ -1511,12 +1562,16 @@ class LiveTradingBot:
         Uses the same logic as the backtest walk-forward loop.
         Now places pending limit orders instead of market orders
         to match backtest entry behavior exactly.
+        
+        Sync with MT5 first to detect manually closed/cancelled positions/orders.
         """
         log.info("=" * 70)
         log.info(f"MARKET SCAN - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
         log.info(f"Strategy Mode: {SIGNAL_MODE} (Min Confluence: {MIN_CONFLUENCE}/7)")
         log.info(f"Using PENDING ORDERS (like backtest)")
         log.info("=" * 70)
+        
+        available_slots = self.sync_with_mt5_state()
         
         self.scan_count += 1
         signals_found = 0
@@ -1651,6 +1706,7 @@ class LiveTradingBot:
                     time.sleep(60)
                     continue
                 
+                self.sync_with_mt5_state()
                 self.check_pending_orders()
                 self.check_position_updates()
                 

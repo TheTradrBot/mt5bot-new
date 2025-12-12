@@ -1882,6 +1882,30 @@ def run_full_period_backtest(
     return all_trades
 
 
+def cleanup_optimization_backups():
+    """Delete all previous optimization backup files before starting a new run."""
+    import glob
+    backup_patterns = [
+        str(BACKUP_DIR / "ftmo_config_iter*.py"),
+        str(BACKUP_DIR / "strategy_core_iter*.py"),
+        str(BACKUP_DIR / "main_live_bot_iter*.py"),
+    ]
+    
+    deleted_count = 0
+    for pattern in backup_patterns:
+        for filepath in glob.glob(pattern):
+            try:
+                os.remove(filepath)
+                deleted_count += 1
+            except Exception as e:
+                print(f"[Cleanup] Could not delete {filepath}: {e}")
+    
+    if deleted_count > 0:
+        print(f"[Cleanup] Deleted {deleted_count} previous optimization backup files")
+    else:
+        print(f"[Cleanup] No previous backup files to delete")
+
+
 def main_challenge_analyzer():
     """
     Main execution with self-optimizing loop:
@@ -1895,6 +1919,8 @@ def main_challenge_analyzer():
     4. Loop until success or max iterations
     5. Use BEST result across all iterations for final reports
     """
+    cleanup_optimization_backups()
+    
     MAX_ITERATIONS = 25
     iteration = 0
     success = False
