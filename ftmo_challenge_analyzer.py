@@ -65,7 +65,7 @@ class BacktestTrade:
     tp3_price: Optional[float]
     tp4_price: Optional[float] = None
     tp5_price: Optional[float] = None
-    exit_date: datetime = None
+    exit_date: Optional[datetime] = None
     exit_price: float = 0.0
     tp1_hit: bool = False
     tp1_hit_date: Optional[datetime] = None
@@ -711,7 +711,18 @@ class ChallengeSequencer:
         tp1_hit = "TP1" in trade.exit_reason
         tp2_hit = "TP2" in trade.exit_reason
         tp3_hit = "TP3" in trade.exit_reason
+        tp4_hit = "TP4" in trade.exit_reason
+        tp5_hit = "TP5" in trade.exit_reason
         sl_hit = trade.exit_reason == "SL"
+        
+        is_runner = trade.rr >= FTMO_CONFIG.tp4_r_multiple
+        is_mega_runner = trade.rr >= FTMO_CONFIG.tp5_r_multiple
+        
+        if is_mega_runner and not tp5_hit:
+            tp5_hit = True
+            tp4_hit = True
+        elif is_runner and not tp4_hit:
+            tp4_hit = True
         
         return BacktestTrade(
             trade_num=self.trade_counter,
@@ -726,6 +737,8 @@ class ChallengeSequencer:
             tp1_price=trade.tp1 or 0.0,
             tp2_price=trade.tp2,
             tp3_price=trade.tp3,
+            tp4_price=getattr(trade, 'tp4', None),
+            tp5_price=getattr(trade, 'tp5', None),
             exit_date=exit_dt,
             exit_price=trade.exit_price,
             tp1_hit=tp1_hit,
@@ -734,6 +747,10 @@ class ChallengeSequencer:
             tp2_hit_date=exit_dt if tp2_hit else None,
             tp3_hit=tp3_hit,
             tp3_hit_date=exit_dt if tp3_hit else None,
+            tp4_hit=tp4_hit,
+            tp4_hit_date=exit_dt if tp4_hit else None,
+            tp5_hit=tp5_hit,
+            tp5_hit_date=exit_dt if tp5_hit else None,
             sl_hit=sl_hit,
             sl_hit_date=exit_dt if sl_hit else None,
             exit_reason=trade.exit_reason,
@@ -1066,6 +1083,16 @@ class PerformanceOptimizer:
             "daily_loss_warning_pct": self.config.daily_loss_warning_pct,
             "daily_loss_reduce_pct": self.config.daily_loss_reduce_pct,
             "min_quality_factors": self.config.min_quality_factors,
+            "tp1_r_multiple": self.config.tp1_r_multiple,
+            "tp2_r_multiple": self.config.tp2_r_multiple,
+            "tp3_r_multiple": self.config.tp3_r_multiple,
+            "tp4_r_multiple": self.config.tp4_r_multiple,
+            "tp5_r_multiple": self.config.tp5_r_multiple,
+            "tp1_close_pct": self.config.tp1_close_pct,
+            "tp2_close_pct": self.config.tp2_close_pct,
+            "tp3_close_pct": self.config.tp3_close_pct,
+            "tp4_close_pct": self.config.tp4_close_pct,
+            "tp5_close_pct": self.config.tp5_close_pct,
         }
     
     def analyze_per_asset_performance(self, trades: List[BacktestTrade]) -> Dict:
@@ -1101,6 +1128,51 @@ class PerformanceOptimizer:
             ) if stats['win_profits'] else 0
         
         return asset_stats
+    
+    def analyze_runner_performance(self, trades: List[BacktestTrade]) -> Dict:
+        """Analyze runner-catching performance (TP4/TP5 hits)."""
+        total_trades = len(trades)
+        wins = [t for t in trades if t.result == "WIN"]
+        
+        tp1_hits = sum(1 for t in trades if t.tp1_hit)
+        tp2_hits = sum(1 for t in trades if t.tp2_hit)
+        tp3_hits = sum(1 for t in trades if t.tp3_hit)
+        tp4_hits = sum(1 for t in trades if t.tp4_hit)
+        tp5_hits = sum(1 for t in trades if t.tp5_hit)
+        
+        runners = [t for t in trades if t.r_multiple >= FTMO_CONFIG.tp4_r_multiple]
+        mega_runners = [t for t in trades if t.r_multiple >= FTMO_CONFIG.tp5_r_multiple]
+        
+        total_r = sum(t.r_multiple for t in trades)
+        runner_r = sum(t.r_multiple for t in runners)
+        mega_runner_r = sum(t.r_multiple for t in mega_runners)
+        
+        avg_r_per_trade = total_r / total_trades if total_trades > 0 else 0
+        avg_runner_r = runner_r / len(runners) if runners else 0
+        
+        runner_contribution_pct = (runner_r / total_r * 100) if total_r > 0 else 0
+        
+        return {
+            "total_trades": total_trades,
+            "total_wins": len(wins),
+            "tp1_hits": tp1_hits,
+            "tp2_hits": tp2_hits,
+            "tp3_hits": tp3_hits,
+            "tp4_hits": tp4_hits,
+            "tp5_hits": tp5_hits,
+            "tp1_hit_rate": (tp1_hits / total_trades * 100) if total_trades > 0 else 0,
+            "tp4_hit_rate": (tp4_hits / total_trades * 100) if total_trades > 0 else 0,
+            "tp5_hit_rate": (tp5_hits / total_trades * 100) if total_trades > 0 else 0,
+            "runners_count": len(runners),
+            "mega_runners_count": len(mega_runners),
+            "runner_pct": (len(runners) / len(wins) * 100) if wins else 0,
+            "total_r": total_r,
+            "runner_r_contribution": runner_r,
+            "runner_contribution_pct": runner_contribution_pct,
+            "avg_r_per_trade": avg_r_per_trade,
+            "avg_runner_r": avg_runner_r,
+            "best_runner": max((t.r_multiple for t in trades), default=0),
+        }
     
     def identify_underperforming_assets(self, trades: List[BacktestTrade]) -> List[str]:
         """Identify assets that fail win-rate or R criteria."""
@@ -1241,6 +1313,8 @@ class PerformanceOptimizer:
         win_profits = [t.profit_loss_usd for t in all_trades if t.result == "WIN"]
         avg_win_profit = sum(win_profits) / len(win_profits) if win_profits else 0
         
+        runner_stats = self.analyze_runner_performance(all_trades)
+        
         return {
             "total_trades": len(all_trades),
             "step1_failures": step1_failures,
@@ -1254,6 +1328,7 @@ class PerformanceOptimizer:
             "low_r_assets": low_r_assets,
             "avg_win_profit": avg_win_profit,
             "asset_stats": asset_stats,
+            "runner_stats": runner_stats,
         }
     
     def determine_optimizations(self, patterns: Dict, iteration: int) -> Dict[str, Any]:
@@ -1363,6 +1438,18 @@ class PerformanceOptimizer:
         print(f"  Profit Target Failures: {patterns['profit_failures']}")
         print(f"  Avg Win Profit: ${patterns['avg_win_profit']:.2f} (need ${self.MIN_PROFIT_PER_WIN}+)")
         print(f"  Low Win-Rate Assets: {len(patterns.get('low_winrate_assets', []))}")
+        
+        runner_stats = patterns.get('runner_stats', {})
+        if runner_stats:
+            print(f"\nRunner Performance (TP4/TP5 Catches):")
+            print(f"  TP1 Hits: {runner_stats.get('tp1_hits', 0)} ({runner_stats.get('tp1_hit_rate', 0):.1f}%)")
+            print(f"  TP4 Hits (7R+): {runner_stats.get('tp4_hits', 0)} ({runner_stats.get('tp4_hit_rate', 0):.1f}%)")
+            print(f"  TP5 Hits (10R+): {runner_stats.get('tp5_hits', 0)} ({runner_stats.get('tp5_hit_rate', 0):.1f}%)")
+            print(f"  Total Runners (7R+): {runner_stats.get('runners_count', 0)} ({runner_stats.get('runner_pct', 0):.1f}% of wins)")
+            print(f"  Mega Runners (10R+): {runner_stats.get('mega_runners_count', 0)}")
+            print(f"  Runner R Contribution: {runner_stats.get('runner_contribution_pct', 0):.1f}% of total R")
+            print(f"  Best Runner: {runner_stats.get('best_runner', 0):.1f}R")
+            print(f"  Avg R per Trade: {runner_stats.get('avg_r_per_trade', 0):.2f}R")
         
         optimizations = self.determine_optimizations(patterns, iteration)
         
@@ -1896,6 +1983,20 @@ def main_challenge_analyzer():
     
     reporter = ReportGenerator()
     reporter.generate_all_reports(results, validation_report)
+    
+    print(f"\n{'='*80}")
+    print("RUNNER PERFORMANCE SUMMARY")
+    print(f"{'='*80}")
+    runner_stats = optimizer.analyze_runner_performance(results.get('all_trades', []))
+    print(f"  Total Trades: {runner_stats.get('total_trades', 0)}")
+    print(f"  TP1 Hits: {runner_stats.get('tp1_hits', 0)} ({runner_stats.get('tp1_hit_rate', 0):.1f}%)")
+    print(f"  TP4 Hits (7R+): {runner_stats.get('tp4_hits', 0)} ({runner_stats.get('tp4_hit_rate', 0):.1f}%)")
+    print(f"  TP5 Hits (10R+): {runner_stats.get('tp5_hits', 0)} ({runner_stats.get('tp5_hit_rate', 0):.1f}%)")
+    print(f"  Total Runners: {runner_stats.get('runners_count', 0)} ({runner_stats.get('runner_pct', 0):.1f}% of wins)")
+    print(f"  Mega Runners: {runner_stats.get('mega_runners_count', 0)}")
+    print(f"  Runner R Contribution: {runner_stats.get('runner_contribution_pct', 0):.1f}% of total R")
+    print(f"  Best Trade: {runner_stats.get('best_runner', 0):.1f}R")
+    print(f"  Avg R per Trade: {runner_stats.get('avg_r_per_trade', 0):.2f}R")
     
     print(f"\n{'='*80}")
     print("ASSET PERFORMANCE SUMMARY")
