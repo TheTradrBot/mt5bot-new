@@ -1338,11 +1338,12 @@ class PerformanceOptimizer:
         low_wr_assets = patterns.get("low_winrate_assets", [])
         low_r_assets = patterns.get("low_r_assets", [])
         
-        if low_wr_assets or low_r_assets:
-            assets_to_exclude = list(set(low_wr_assets + low_r_assets))
-            if assets_to_exclude:
-                self.add_excluded_assets(assets_to_exclude)
-                print(f"  [Optimizer] Excluding {len(assets_to_exclude)} underperforming assets")
+        # NOTE: Asset exclusion disabled - all 34 assets are always included
+        # if low_wr_assets or low_r_assets:
+        #     assets_to_exclude = list(set(low_wr_assets + low_r_assets))
+        #     if assets_to_exclude:
+        #         self.add_excluded_assets(assets_to_exclude)
+        #         print(f"  [Optimizer] Excluding {len(assets_to_exclude)} underperforming assets")
         
         if patterns["total_trades"] < self.MIN_TRADES_NEEDED:
             new_confluence = max(2, self.current_min_confluence - 1)
