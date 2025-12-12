@@ -77,6 +77,7 @@ class PendingSetup:
     tp2_hit: bool = False
     tp3_hit: bool = False
     tp4_hit: bool = False
+    tp5_hit: bool = False
     
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -1211,20 +1212,17 @@ class LiveTradingBot:
     
     def manage_partial_takes(self):
         """
-        Manage partial take profits for active positions.
+        Manage partial take profits for active positions with progressive trailing stop.
         
-        Challenge Mode Strategy (FTMO Optimized):
-        - TP1 hit: Close 45% of position volume at +0.8-1R
-        - TP2 hit: Close 30% at +2R
-        - TP3 hit: Close remaining 25% at +3-4R or trailing
-        - Move SL to breakeven + buffer after TP1
+        5-Level TP System with Trailing Stop:
+        - TP1 hit: Close 25% of position, move SL to breakeven+buffer
+        - TP2 hit: Close 25%, move trailing SL to TP1 level
+        - TP3 hit: Close 20%, move trailing SL to TP2 level
+        - TP4 hit: Close 15%, move trailing SL to TP3 level
+        - TP5 hit: Close remaining 15% OR exit when trailing stop is hit
         
-        Standard Mode:
-        - TP1 hit: Close 33% of position volume
-        - TP2 hit: Close 50% of remaining
-        - TP3 hit: Close remainder
-        
-        Tracks partial close state in pending_setups.
+        The position only fully exits at TP5 or when trailing stop is hit.
+        Trailing stop progressively locks in profits after each TP level.
         """
         positions = self.mt5.get_my_positions()
         if not positions:
@@ -1249,49 +1247,56 @@ class LiveTradingBot:
             tp1 = setup.tp1
             tp2 = setup.tp2
             tp3 = setup.tp3
+            tp4 = setup.tp4
+            tp5 = setup.tp5
             
             partial_state = getattr(setup, 'partial_closes', 0) if hasattr(setup, 'partial_closes') else 0
             
             tp1_hit = False
             tp2_hit = False
             tp3_hit = False
+            tp4_hit = False
+            tp5_hit = False
             
             if setup.direction == "bullish":
                 tp1_hit = current_price >= tp1 if tp1 else False
                 tp2_hit = current_price >= tp2 if tp2 else False
                 tp3_hit = current_price >= tp3 if tp3 else False
+                tp4_hit = current_price >= tp4 if tp4 else False
+                tp5_hit = current_price >= tp5 if tp5 else False
             else:
                 tp1_hit = current_price <= tp1 if tp1 else False
                 tp2_hit = current_price <= tp2 if tp2 else False
                 tp3_hit = current_price <= tp3 if tp3 else False
+                tp4_hit = current_price <= tp4 if tp4 else False
+                tp5_hit = current_price <= tp5 if tp5 else False
             
             original_volume = setup.lot_size
             current_volume = pos.volume
             
-            # EXACT same partial close volumes as backtest_live_bot.py
-            if CHALLENGE_MODE and self.challenge_manager:
-                tp1_vol, tp2_vol, tp3_vol = self.challenge_manager.get_partial_close_volumes(original_volume)
-            else:
-                # Match backtest: 45% TP1, 30% TP2, 25% TP3
-                tp1_vol = round(original_volume * FTMO_CONFIG.tp1_close_pct, 2)
-                tp2_vol = round(original_volume * FTMO_CONFIG.tp2_close_pct, 2)
-                tp3_vol = round(original_volume * FTMO_CONFIG.tp3_close_pct, 2)
+            tp1_vol = round(original_volume * FTMO_CONFIG.tp1_close_pct, 2)
+            tp2_vol = round(original_volume * FTMO_CONFIG.tp2_close_pct, 2)
+            tp3_vol = round(original_volume * FTMO_CONFIG.tp3_close_pct, 2)
+            tp4_vol = round(original_volume * FTMO_CONFIG.tp4_close_pct, 2)
+            tp5_vol = round(original_volume * FTMO_CONFIG.tp5_close_pct, 2)
             
             tp1_vol = max(0.01, tp1_vol)
             tp2_vol = max(0.01, tp2_vol)
             tp3_vol = max(0.01, tp3_vol)
+            tp4_vol = max(0.01, tp4_vol)
+            tp5_vol = max(0.01, tp5_vol)
             
             if tp1_hit and partial_state == 0:
                 close_volume = min(tp1_vol, current_volume)
                 
                 if close_volume >= 0.01:
-                    pct_display = int((tp1_vol / original_volume) * 100) if original_volume > 0 else 0
-                    log.info(f"[{symbol}] TP1 HIT! Closing {pct_display}% ({close_volume} lots) of position")
+                    pct_display = int(FTMO_CONFIG.tp1_close_pct * 100)
+                    log.info(f"[{symbol}] TP1 HIT ({FTMO_CONFIG.tp1_r_multiple}R)! Closing {pct_display}% ({close_volume} lots)")
                     result = self.mt5.partial_close(pos.ticket, close_volume)
                     if result.success:
                         log.info(f"[{symbol}] Partial close successful at {result.price}")
                         setup.partial_closes = 1
-                        self._save_pending_setups()
+                        setup.tp1_hit = True
                         
                         be_buffer = abs(setup.entry_price - setup.stop_loss) * 0.1
                         if setup.direction == "bullish":
@@ -1299,36 +1304,81 @@ class LiveTradingBot:
                         else:
                             new_sl = setup.entry_price - be_buffer
                         
-                        self.mt5.modify_sl_tp(pos.ticket, sl=new_sl, tp=tp2 if tp2 else tp1)
-                        log.info(f"[{symbol}] SL moved to BE+buffer ({new_sl:.5f}), TP updated to TP2: {tp2 if tp2 else 'N/A'}")
+                        setup.trailing_sl = new_sl
+                        self.mt5.modify_sl_tp(pos.ticket, sl=new_sl, tp=tp5 if tp5 else tp3)
+                        log.info(f"[{symbol}] Trailing SL moved to BE+buffer ({new_sl:.5f}), target TP5: {tp5 if tp5 else 'N/A'}")
+                        self._save_pending_setups()
                     else:
                         log.error(f"[{symbol}] Partial close failed: {result.error}")
             
             elif tp2_hit and partial_state == 1:
-                remaining_volume = current_volume
-                close_volume = min(tp2_vol, remaining_volume)
+                close_volume = min(tp2_vol, current_volume)
                 if close_volume >= 0.01:
-                    pct_display = int((tp2_vol / original_volume) * 100) if original_volume > 0 else 0
-                    log.info(f"[{symbol}] TP2 HIT! Closing {pct_display}% ({close_volume} lots)")
+                    pct_display = int(FTMO_CONFIG.tp2_close_pct * 100)
+                    log.info(f"[{symbol}] TP2 HIT ({FTMO_CONFIG.tp2_r_multiple}R)! Closing {pct_display}% ({close_volume} lots)")
                     result = self.mt5.partial_close(pos.ticket, close_volume)
                     if result.success:
                         log.info(f"[{symbol}] Partial close successful at {result.price}")
                         setup.partial_closes = 2
-                        self._save_pending_setups()
+                        setup.tp2_hit = True
                         
-                        if tp3:
-                            self.mt5.modify_sl_tp(pos.ticket, tp=tp3)
-                            log.info(f"[{symbol}] TP updated to TP3: {tp3}")
+                        if FTMO_CONFIG.trail_after_tp2 and tp1:
+                            new_trailing_sl = tp1
+                            setup.trailing_sl = new_trailing_sl
+                            self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=tp5 if tp5 else tp3)
+                            log.info(f"[{symbol}] Trailing SL moved to TP1 level ({new_trailing_sl:.5f})")
+                        self._save_pending_setups()
                     else:
                         log.error(f"[{symbol}] Partial close failed: {result.error}")
             
             elif tp3_hit and partial_state == 2:
-                log.info(f"[{symbol}] TP3 HIT! Closing remainder of position")
+                close_volume = min(tp3_vol, current_volume)
+                if close_volume >= 0.01:
+                    pct_display = int(FTMO_CONFIG.tp3_close_pct * 100)
+                    log.info(f"[{symbol}] TP3 HIT ({FTMO_CONFIG.tp3_r_multiple}R)! Closing {pct_display}% ({close_volume} lots)")
+                    result = self.mt5.partial_close(pos.ticket, close_volume)
+                    if result.success:
+                        log.info(f"[{symbol}] Partial close successful at {result.price}")
+                        setup.partial_closes = 3
+                        setup.tp3_hit = True
+                        
+                        if FTMO_CONFIG.trail_after_tp3 and tp2:
+                            new_trailing_sl = tp2
+                            setup.trailing_sl = new_trailing_sl
+                            self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=tp5 if tp5 else tp4)
+                            log.info(f"[{symbol}] Trailing SL moved to TP2 level ({new_trailing_sl:.5f})")
+                        self._save_pending_setups()
+                    else:
+                        log.error(f"[{symbol}] Partial close failed: {result.error}")
+            
+            elif tp4_hit and partial_state == 3:
+                close_volume = min(tp4_vol, current_volume)
+                if close_volume >= 0.01:
+                    pct_display = int(FTMO_CONFIG.tp4_close_pct * 100)
+                    log.info(f"[{symbol}] TP4 HIT ({FTMO_CONFIG.tp4_r_multiple}R)! Closing {pct_display}% ({close_volume} lots)")
+                    result = self.mt5.partial_close(pos.ticket, close_volume)
+                    if result.success:
+                        log.info(f"[{symbol}] Partial close successful at {result.price}")
+                        setup.partial_closes = 4
+                        setup.tp4_hit = True
+                        
+                        if FTMO_CONFIG.trail_after_tp4 and tp3:
+                            new_trailing_sl = tp3
+                            setup.trailing_sl = new_trailing_sl
+                            self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=tp5)
+                            log.info(f"[{symbol}] Trailing SL moved to TP3 level ({new_trailing_sl:.5f}), waiting for TP5 or trailing stop")
+                        self._save_pending_setups()
+                    else:
+                        log.error(f"[{symbol}] Partial close failed: {result.error}")
+            
+            elif tp5_hit and partial_state == 4:
+                log.info(f"[{symbol}] TP5 HIT ({FTMO_CONFIG.tp5_r_multiple}R)! Closing remainder of position - RUNNER COMPLETE!")
                 result = self.mt5.close_position(pos.ticket)
                 if result.success:
-                    log.info(f"[{symbol}] Position fully closed at {result.price}")
+                    log.info(f"[{symbol}] Position fully closed at {result.price} - Maximum target reached!")
                     setup.status = "closed"
-                    setup.partial_closes = 3
+                    setup.partial_closes = 5
+                    setup.tp5_hit = True
                     self._save_pending_setups()
                 else:
                     log.error(f"[{symbol}] Failed to close position: {result.error}")
@@ -1516,7 +1566,7 @@ class LiveTradingBot:
         - Global Risk Controller: Real-time P/L tracking every 30s via execute_protection_actions()
         - Smart Position Sizing: 0.75% risk per trade, adaptive to DD
         - Concurrent Trade Limit: Max 5 positions, auto-cancel excess pending
-        - Partial Takes: 45% TP1, 30% TP2, 25% TP3 with BE+buffer (via get_partial_close_volumes)
+        - Partial Takes: 25% TP1, 25% TP2, 20% TP3, 15% TP4, 15% TP5 with progressive trailing SL
         - Emergency Close: 4.5% daily loss or 8% total DD triggers halt
         - Risk Modes: Aggressive/Normal/Conservative/Ultra-Safe based on DD
         - Action Types: CLOSE_ALL, CANCEL_PENDING, MOVE_SL_BREAKEVEN, CLOSE_WORST, HALT_TRADING
