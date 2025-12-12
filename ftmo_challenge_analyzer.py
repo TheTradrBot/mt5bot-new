@@ -1800,10 +1800,13 @@ def run_full_period_backtest(
         print(f"Processing {asset}...", end=" ")
         
         try:
-            daily_data = get_ohlcv_api(asset, timeframe="D", count=500, use_cache=True)
-            weekly_data = get_ohlcv_api(asset, timeframe="W", count=104, use_cache=True) or []
-            monthly_data = get_ohlcv_api(asset, timeframe="M", count=60, use_cache=True) or []
-            h4_data = get_ohlcv_api(asset, timeframe="H4", count=500, use_cache=True) or []
+            # Fetch maximum available data to cover full Jan-Nov 2025 period
+            # OANDA allows up to 5000 candles per request
+            # For 11 months: ~330 daily candles, ~2000 H4 candles needed
+            daily_data = get_ohlcv_api(asset, timeframe="D", count=1000, use_cache=False)  # Fresh data, no cache
+            weekly_data = get_ohlcv_api(asset, timeframe="W", count=200, use_cache=False) or []
+            monthly_data = get_ohlcv_api(asset, timeframe="M", count=100, use_cache=False) or []
+            h4_data = get_ohlcv_api(asset, timeframe="H4", count=2500, use_cache=False) or []
             
             if not daily_data:
                 print("No data")
