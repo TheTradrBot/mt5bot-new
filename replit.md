@@ -26,6 +26,17 @@ A 7-layer safety system, known as "Challenge Mode Elite Protection," is implemen
 -   **Live Equity Protection Loop**: 30-second monitoring with automatic protective actions.
 -   **Challenge-Optimized Behavior**: Five risk modes (Aggressive to Halted) based on current drawdown.
 -   **Core Strategy Integration**: Wraps the core strategy with safety layers without altering entry logic.
+-   **5-Level TP System with Progressive Trailing Stop**: Maximizes runner profits while locking in gains.
+
+### 5-Level Take Profit System (Updated Dec 2025)
+The system now uses a 5-level TP approach with progressive trailing stops:
+- **TP1 (1.5R)**: Close 25% of position, move trailing SL to breakeven+buffer
+- **TP2 (3.0R)**: Close 25%, move trailing SL to TP1 level
+- **TP3 (5.0R)**: Close 20%, move trailing SL to TP2 level
+- **TP4 (7.0R)**: Close 15%, move trailing SL to TP3 level
+- **TP5 (10.0R)**: Close remaining 15% - FULL EXIT only at TP5 or when trailing stop is hit
+
+This allows winners to run while progressively protecting profits at each level.
 
 The system supports 34 tradable assets, including major and cross Forex pairs, Gold (XAUUSD), Silver (XAGUSD), Bitcoin (BTCUSD), Ethereum (ETHUSD), S&P 500 (US500), and Nasdaq 100 (US100). A `symbol_mapping.py` module handles conversions between OANDA data formats and FTMO MT5 trading formats.
 
