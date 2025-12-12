@@ -15,19 +15,19 @@ Success Rate: 92.3%
 
 CHALLENGE DETAILS:
 ------------------
-Challenge #1: PASSED | Step 1: +11.4% | Step 2: +5.3% | Total: $34,593
-Challenge #2: PASSED | Step 1: +10.2% | Step 2: +7.7% | Total: $37,302
-Challenge #3: PASSED | Step 1: +11.5% | Step 2: +5.1% | Total: $34,251
-Challenge #4: PASSED | Step 1: +10.7% | Step 2: +9.4% | Total: $42,278
-Challenge #5: PASSED | Step 1: +14.3% | Step 2: +9.3% | Total: $50,062
+Challenge #1: PASSED | Step 1: +10.6% | Step 2: +5.6% | Total: $33,518
+Challenge #2: PASSED | Step 1: +11.2% | Step 2: +7.9% | Total: $39,930
+Challenge #3: PASSED | Step 1: +11.7% | Step 2: +5.3% | Total: $35,327
+Challenge #4: PASSED | Step 1: +10.3% | Step 2: +10.8% | Total: $44,348
+Challenge #5: PASSED | Step 1: +14.8% | Step 2: +9.3% | Total: $51,162
 Challenge #6: PASSED | Step 1: +10.7% | Step 2: +5.4% | Total: $33,474
-Challenge #7: PASSED | Step 1: +10.4% | Step 2: +7.2% | Total: $36,689
-Challenge #8: PASSED | Step 1: +10.6% | Step 2: +7.5% | Total: $37,873
-Challenge #9: PASSED | Step 1: +11.0% | Step 2: +11.3% | Total: $47,026
-Challenge #10: PASSED | Step 1: +10.0% | Step 2: +5.2% | Total: $31,518
-Challenge #11: PASSED | Step 1: +10.1% | Step 2: +6.9% | Total: $35,402
+Challenge #7: PASSED | Step 1: +11.2% | Step 2: +7.5% | Total: $39,203
+Challenge #8: PASSED | Step 1: +10.1% | Step 2: +8.5% | Total: $39,000
+Challenge #9: PASSED | Step 1: +10.1% | Step 2: +13.1% | Total: $48,994
+Challenge #10: PASSED | Step 1: +10.3% | Step 2: +5.0% | Total: $31,676
+Challenge #11: PASSED | Step 1: +10.2% | Step 2: +7.7% | Total: $37,422
 Challenge #12: PASSED | Step 1: +10.2% | Step 2: +9.2% | Total: $40,693
-Challenge #13: FAILED | Step 1: +10.1% | Failed at: Step 2
+Challenge #13: FAILED | Step 1: +10.4% | Failed at: Step 2
 
 TRADING STATISTICS:
 -------------------
@@ -35,19 +35,19 @@ Total Trades: 401
 Winning Trades: 347
 Losing Trades: 54
 Win Rate: 86.5%
-Average R per Trade: +0.52R
-Best Trade: +1.3R (USD_JPY)
+Average R per Trade: +0.54R
+Best Trade: +1.4R (GBP_USD)
 Worst Trade: -1.0R
 
 PROFITABILITY ANALYSIS:
 -----------------------
-Gross Profit: $+580,925.40
-Gross Loss: $-95,406.49
-Net Profit: $+485,518.91
+Gross Profit: $+597,798.54
+Gross Loss: $-98,139.57
+Net Profit: $+499,658.97
 
 EARNING POTENTIAL:
 ------------------
-TOTAL FROM 12 PASSED CHALLENGES: $461,160.73
+TOTAL FROM 12 PASSED CHALLENGES: $474,749.27
 
 SUCCESS CRITERIA CHECK:
 -----------------------

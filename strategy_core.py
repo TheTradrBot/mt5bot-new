@@ -1124,19 +1124,26 @@ def simulate_trades(
         if risk <= 0:
             continue
         
-        # Partial take-profit percentages from params (must sum to 1.0)
-        TP1_CLOSE_PCT = params.tp1_close_pct
-        TP2_CLOSE_PCT = params.tp2_close_pct
-        TP3_CLOSE_PCT = params.tp3_close_pct
+        # Partial take-profit percentages (TP4/TP5 runners get remaining position)
+        TP1_CLOSE_PCT = params.tp1_close_pct  # 0.30
+        TP2_CLOSE_PCT = params.tp2_close_pct  # 0.40
+        TP3_CLOSE_PCT = params.tp3_close_pct  # 0.30
+        # For TP4/TP5 runners: keep 20% of position running after TP3
+        TP4_CLOSE_PCT = 0.15  # Close 15% at TP4
+        TP5_CLOSE_PCT = 0.05  # Close final 5% at TP5
         
         # Pre-calculate individual R-multiples for each TP level
         tp1_rr = (tp1 - entry_price) / risk if direction == "bullish" else (entry_price - tp1) / risk
         tp2_rr = (tp2 - entry_price) / risk if tp2 and direction == "bullish" else ((entry_price - tp2) / risk if tp2 else 0)
         tp3_rr = (tp3 - entry_price) / risk if tp3 and direction == "bullish" else ((entry_price - tp3) / risk if tp3 else 0)
+        tp4_rr = (tp4 - entry_price) / risk if tp4 and direction == "bullish" else ((entry_price - tp4) / risk if tp4 else 0)
+        tp5_rr = (tp5 - entry_price) / risk if tp5 and direction == "bullish" else ((entry_price - tp5) / risk if tp5 else 0)
         
         trade_closed = False
         tp1_hit = False
         tp2_hit = False
+        tp3_hit = False
+        tp4_hit = False
         trailing_sl = sl
         
         reward = 0.0
@@ -1192,8 +1199,30 @@ def simulate_trades(
                     if tp2 is not None and high >= tp2 and not tp2_hit:
                         tp2_hit = True
                     
-                    # Check highest TP hit for exit (sequential: TP3 requires TP2, etc.)
-                    if tp3 is not None and high >= tp3 and tp2_hit:
+                    # Check TP3 hit (must happen before TP4)
+                    if tp3 is not None and high >= tp3 and tp2_hit and not tp3_hit:
+                        tp3_hit = True
+                    
+                    # Check TP4 hit (must happen before TP5)
+                    if tp4 is not None and high >= tp4 and tp3_hit and not tp4_hit:
+                        tp4_hit = True
+                    
+                    # Check highest TP hit for exit (sequential: TP5 > TP4 > TP3 > TP2)
+                    if tp5 is not None and high >= tp5 and tp4_hit:
+                        # TP5 exit (mega runner): full position through all TPs
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT - TP5_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr + TP5_CLOSE_PCT * tp5_rr
+                        reward = rr * risk
+                        exit_reason = "TP5"
+                        is_winner = True
+                        trade_closed = True
+                    elif tp4 is not None and high >= tp4 and tp3_hit:
+                        # TP4 exit (runner): partials through TP4
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr
+                        reward = rr * risk
+                        exit_reason = "TP4"
+                        is_winner = True
+                        trade_closed = True
+                    elif tp3 is not None and high >= tp3 and tp2_hit:
                         # TP3 exit: weighted partial at TP1, TP2, and TP3
                         trail_rr = (trailing_sl - entry_price) / risk
                         rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * tp3_rr
@@ -1252,8 +1281,30 @@ def simulate_trades(
                     if tp2 is not None and low <= tp2 and not tp2_hit:
                         tp2_hit = True
                     
-                    # Check highest TP hit for exit (sequential: TP3 requires TP2, etc.)
-                    if tp3 is not None and low <= tp3 and tp2_hit:
+                    # Check TP3 hit (must happen before TP4)
+                    if tp3 is not None and low <= tp3 and tp2_hit and not tp3_hit:
+                        tp3_hit = True
+                    
+                    # Check TP4 hit (must happen before TP5)
+                    if tp4 is not None and low <= tp4 and tp3_hit and not tp4_hit:
+                        tp4_hit = True
+                    
+                    # Check highest TP hit for exit (sequential: TP5 > TP4 > TP3 > TP2)
+                    if tp5 is not None and low <= tp5 and tp4_hit:
+                        # TP5 exit (mega runner): full position through all TPs
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT - TP5_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr + TP5_CLOSE_PCT * tp5_rr
+                        reward = rr * risk
+                        exit_reason = "TP5"
+                        is_winner = True
+                        trade_closed = True
+                    elif tp4 is not None and low <= tp4 and tp3_hit:
+                        # TP4 exit (runner): partials through TP4
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr
+                        reward = rr * risk
+                        exit_reason = "TP4"
+                        is_winner = True
+                        trade_closed = True
+                    elif tp3 is not None and low <= tp3 and tp2_hit:
                         # TP3 exit: weighted partial at TP1, TP2, and TP3
                         rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * tp3_rr
                         reward = rr * risk
