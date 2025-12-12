@@ -27,6 +27,8 @@ A 7-layer safety system, known as "Challenge Mode Elite Protection," is implemen
 -   **Challenge-Optimized Behavior**: Five risk modes (Aggressive to Halted) based on current drawdown.
 -   **Core Strategy Integration**: Wraps the core strategy with safety layers without altering entry logic.
 -   **5-Level TP System with Progressive Trailing Stop**: Maximizes runner profits while locking in gains.
+-   **MT5 State Sync**: Detects manually closed positions and cancelled orders, freeing slots for new trades.
+-   **Smart Pending Order Replacement**: Cancels lower-probability pending orders when higher-probability setups appear.
 
 ### 5-Level Take Profit System (Updated Dec 2025)
 The system now uses a 5-level TP approach with progressive trailing stops:
@@ -45,6 +47,8 @@ Key architectural decisions include:
 -   Use of pending limit orders for precise trade entry matching backtest conditions.
 -   Comprehensive FTMO challenge rule enforcement, including profit targets, max daily loss, and max total drawdown.
 -   Dynamic lot sizing and H4 timeframe for Stop Loss calculation for optimized performance.
+-   FTMO Challenge Analyzer with self-optimizing loop and automatic backup cleanup at each run.
+-   Auto-update of main_live_bot.py with best optimizer settings after each analysis run.
 
 ## External Dependencies
 -   **MetaTrader5**: For trading operations (Windows VM only).
