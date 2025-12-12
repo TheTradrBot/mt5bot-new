@@ -1144,6 +1144,7 @@ def simulate_trades(
         tp2_hit = False
         tp3_hit = False
         tp4_hit = False
+        tp5_hit = False
         trailing_sl = sl
         
         reward = 0.0
@@ -1158,165 +1159,134 @@ def simulate_trades(
             exit_timestamp = c.get("time") or c.get("timestamp") or c.get("date")
             
             if direction == "bullish":
+                # First check if trailing SL is hit (only exit condition besides TP5)
                 if low <= trailing_sl:
-                    if tp1_hit:
-                        # TP1+Trail: weighted partial at TP1 + remaining at trail
-                        trail_rr = (trailing_sl - entry_price) / risk
-                        if tp2_hit:
-                            # TP1+TP2 hit, then trail stopped: 30% at TP1, 40% at TP2, 30% at trail
-                            rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * trail_rr
-                            exit_reason = "TP2+Trail"
-                        else:
-                            # Only TP1 hit, then trail stopped: 30% at TP1, 70% at trail
-                            remaining_pct = TP2_CLOSE_PCT + TP3_CLOSE_PCT  # 0.70
-                            rr = TP1_CLOSE_PCT * tp1_rr + remaining_pct * trail_rr
-                            exit_reason = "TP1+Trail"
-                        reward = rr * risk
+                    # Calculate R based on highest TP hit + trailing stop level
+                    trail_rr = (trailing_sl - entry_price) / risk
+                    
+                    if tp4_hit:
+                        # TP4 hit, SL was at TP3: 30% TP1 + 40% TP2 + 20% TP3 + 10% at trail (TP3)
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + 0.20 * tp3_rr + 0.10 * trail_rr
+                        exit_reason = "TP4+Trail"
+                        is_winner = True
+                    elif tp3_hit:
+                        # TP3 hit, SL was at TP2: 30% TP1 + 40% TP2 + 30% at trail (TP2)
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * trail_rr
+                        exit_reason = "TP3+Trail"
+                        is_winner = True
+                    elif tp2_hit:
+                        # TP2 hit, SL was at TP1: 30% TP1 + 40% at trail (TP1) + 30% at trail (TP1)
+                        rr = TP1_CLOSE_PCT * tp1_rr + (TP2_CLOSE_PCT + TP3_CLOSE_PCT) * trail_rr
+                        exit_reason = "TP2+Trail"
+                        is_winner = True
+                    elif tp1_hit:
+                        # TP1 hit, SL at breakeven: 30% at TP1, 70% at breakeven
+                        rr = TP1_CLOSE_PCT * tp1_rr + (TP2_CLOSE_PCT + TP3_CLOSE_PCT) * trail_rr
+                        exit_reason = "TP1+Trail"
                         is_winner = rr >= 0
                     else:
-                        reward = trailing_sl - entry_price
+                        # Original SL hit, full loss
                         rr = -1.0
                         exit_reason = "SL"
                         is_winner = False
                     
+                    reward = rr * risk
                     trade_closed = True
-                elif tp1 is not None and high >= tp1 and not tp1_hit:
-                    tp1_hit = True
-                    trailing_sl = entry_price
+                else:
+                    # Check TP levels and move trailing SL progressively
+                    # TP1 hit -> SL to breakeven
+                    if tp1 is not None and high >= tp1 and not tp1_hit:
+                        tp1_hit = True
+                        trailing_sl = entry_price  # Move to breakeven
                     
-                    if low <= trailing_sl:
-                        # TP1 hit same bar as trail stop: 30% at TP1, 70% at breakeven
-                        trail_rr = 0.0  # breakeven
-                        remaining_pct = TP2_CLOSE_PCT + TP3_CLOSE_PCT  # 0.70
-                        rr = TP1_CLOSE_PCT * tp1_rr + remaining_pct * trail_rr
-                        reward = rr * risk
-                        exit_reason = "TP1+Trail"
-                        is_winner = True
-                        trade_closed = True
-                
-                if not trade_closed and tp1_hit:
-                    # Check TP2 hit (must happen before TP3)
-                    if tp2 is not None and high >= tp2 and not tp2_hit:
+                    # TP2 hit -> SL to TP1
+                    if tp2 is not None and high >= tp2 and tp1_hit and not tp2_hit:
                         tp2_hit = True
+                        trailing_sl = tp1  # Move to TP1 level
                     
-                    # Check TP3 hit (must happen before TP4)
+                    # TP3 hit -> SL to TP2
                     if tp3 is not None and high >= tp3 and tp2_hit and not tp3_hit:
                         tp3_hit = True
+                        trailing_sl = tp2  # Move to TP2 level
                     
-                    # Check TP4 hit (must happen before TP5)
+                    # TP4 hit -> SL to TP3
                     if tp4 is not None and high >= tp4 and tp3_hit and not tp4_hit:
                         tp4_hit = True
+                        trailing_sl = tp3  # Move to TP3 level
                     
-                    # Check highest TP hit for exit (sequential: TP5 > TP4 > TP3 > TP2)
-                    if tp5 is not None and high >= tp5 and tp4_hit:
-                        # TP5 exit (mega runner): full position through all TPs
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT - TP5_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr + TP5_CLOSE_PCT * tp5_rr
+                    # TP5 hit -> FULL EXIT (only full exit besides SL)
+                    if tp5 is not None and high >= tp5 and tp4_hit and not tp5_hit:
+                        tp5_hit = True
+                        # Full exit at TP5: all partials at their respective levels
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + 0.15 * tp3_rr + 0.10 * tp4_rr + 0.05 * tp5_rr
                         reward = rr * risk
                         exit_reason = "TP5"
-                        is_winner = True
-                        trade_closed = True
-                    elif tp4 is not None and high >= tp4 and tp3_hit:
-                        # TP4 exit (runner): partials through TP4
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr
-                        reward = rr * risk
-                        exit_reason = "TP4"
-                        is_winner = True
-                        trade_closed = True
-                    elif tp3 is not None and high >= tp3 and tp2_hit:
-                        # TP3 exit: weighted partial at TP1, TP2, and TP3
-                        trail_rr = (trailing_sl - entry_price) / risk
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * tp3_rr
-                        reward = rr * risk
-                        exit_reason = "TP3"
-                        is_winner = True
-                        trade_closed = True
-                    elif tp2 is not None and high >= tp2:
-                        # TP2 exit: weighted partial at TP1, TP2, and remaining at trail (breakeven)
-                        trail_rr = (trailing_sl - entry_price) / risk
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * trail_rr
-                        reward = rr * risk
-                        exit_reason = "TP2"
                         is_winner = True
                         trade_closed = True
             else:
                 # BEARISH direction
+                # First check if trailing SL is hit (only exit condition besides TP5)
                 if high >= trailing_sl:
-                    if tp1_hit:
-                        # TP1+Trail: weighted partial at TP1 + remaining at trail
-                        trail_rr = (entry_price - trailing_sl) / risk
-                        if tp2_hit:
-                            # TP1+TP2 hit, then trail stopped: 30% at TP1, 40% at TP2, 30% at trail
-                            rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * trail_rr
-                            exit_reason = "TP2+Trail"
-                        else:
-                            # Only TP1 hit, then trail stopped: 30% at TP1, 70% at trail
-                            remaining_pct = TP2_CLOSE_PCT + TP3_CLOSE_PCT  # 0.70
-                            rr = TP1_CLOSE_PCT * tp1_rr + remaining_pct * trail_rr
-                            exit_reason = "TP1+Trail"
-                        reward = rr * risk
+                    # Calculate R based on highest TP hit + trailing stop level
+                    trail_rr = (entry_price - trailing_sl) / risk
+                    
+                    if tp4_hit:
+                        # TP4 hit, SL was at TP3: 30% TP1 + 40% TP2 + 20% TP3 + 10% at trail (TP3)
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + 0.20 * tp3_rr + 0.10 * trail_rr
+                        exit_reason = "TP4+Trail"
+                        is_winner = True
+                    elif tp3_hit:
+                        # TP3 hit, SL was at TP2: 30% TP1 + 40% TP2 + 30% at trail (TP2)
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * trail_rr
+                        exit_reason = "TP3+Trail"
+                        is_winner = True
+                    elif tp2_hit:
+                        # TP2 hit, SL was at TP1: 30% TP1 + 40% at trail (TP1) + 30% at trail (TP1)
+                        rr = TP1_CLOSE_PCT * tp1_rr + (TP2_CLOSE_PCT + TP3_CLOSE_PCT) * trail_rr
+                        exit_reason = "TP2+Trail"
+                        is_winner = True
+                    elif tp1_hit:
+                        # TP1 hit, SL at breakeven: 30% at TP1, 70% at breakeven
+                        rr = TP1_CLOSE_PCT * tp1_rr + (TP2_CLOSE_PCT + TP3_CLOSE_PCT) * trail_rr
+                        exit_reason = "TP1+Trail"
                         is_winner = rr >= 0
                     else:
-                        reward = entry_price - trailing_sl
+                        # Original SL hit, full loss
                         rr = -1.0
                         exit_reason = "SL"
                         is_winner = False
                     
+                    reward = rr * risk
                     trade_closed = True
-                elif tp1 is not None and low <= tp1 and not tp1_hit:
-                    tp1_hit = True
-                    trailing_sl = entry_price
+                else:
+                    # Check TP levels and move trailing SL progressively
+                    # TP1 hit -> SL to breakeven
+                    if tp1 is not None and low <= tp1 and not tp1_hit:
+                        tp1_hit = True
+                        trailing_sl = entry_price  # Move to breakeven
                     
-                    if high >= trailing_sl:
-                        # TP1 hit same bar as trail stop: 30% at TP1, 70% at breakeven
-                        trail_rr = 0.0  # breakeven
-                        remaining_pct = TP2_CLOSE_PCT + TP3_CLOSE_PCT  # 0.70
-                        rr = TP1_CLOSE_PCT * tp1_rr + remaining_pct * trail_rr
-                        reward = rr * risk
-                        exit_reason = "TP1+Trail"
-                        is_winner = True
-                        trade_closed = True
-                
-                if not trade_closed and tp1_hit:
-                    # Check TP2 hit (must happen before TP3)
-                    if tp2 is not None and low <= tp2 and not tp2_hit:
+                    # TP2 hit -> SL to TP1
+                    if tp2 is not None and low <= tp2 and tp1_hit and not tp2_hit:
                         tp2_hit = True
+                        trailing_sl = tp1  # Move to TP1 level
                     
-                    # Check TP3 hit (must happen before TP4)
+                    # TP3 hit -> SL to TP2
                     if tp3 is not None and low <= tp3 and tp2_hit and not tp3_hit:
                         tp3_hit = True
+                        trailing_sl = tp2  # Move to TP2 level
                     
-                    # Check TP4 hit (must happen before TP5)
+                    # TP4 hit -> SL to TP3
                     if tp4 is not None and low <= tp4 and tp3_hit and not tp4_hit:
                         tp4_hit = True
+                        trailing_sl = tp3  # Move to TP3 level
                     
-                    # Check highest TP hit for exit (sequential: TP5 > TP4 > TP3 > TP2)
-                    if tp5 is not None and low <= tp5 and tp4_hit:
-                        # TP5 exit (mega runner): full position through all TPs
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT - TP5_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr + TP5_CLOSE_PCT * tp5_rr
+                    # TP5 hit -> FULL EXIT (only full exit besides SL)
+                    if tp5 is not None and low <= tp5 and tp4_hit and not tp5_hit:
+                        tp5_hit = True
+                        # Full exit at TP5: all partials at their respective levels
+                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + 0.15 * tp3_rr + 0.10 * tp4_rr + 0.05 * tp5_rr
                         reward = rr * risk
                         exit_reason = "TP5"
-                        is_winner = True
-                        trade_closed = True
-                    elif tp4 is not None and low <= tp4 and tp3_hit:
-                        # TP4 exit (runner): partials through TP4
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + (TP3_CLOSE_PCT - TP4_CLOSE_PCT) * tp3_rr + TP4_CLOSE_PCT * tp4_rr
-                        reward = rr * risk
-                        exit_reason = "TP4"
-                        is_winner = True
-                        trade_closed = True
-                    elif tp3 is not None and low <= tp3 and tp2_hit:
-                        # TP3 exit: weighted partial at TP1, TP2, and TP3
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * tp3_rr
-                        reward = rr * risk
-                        exit_reason = "TP3"
-                        is_winner = True
-                        trade_closed = True
-                    elif tp2 is not None and low <= tp2:
-                        # TP2 exit: weighted partial at TP1, TP2, and remaining at trail (breakeven)
-                        trail_rr = (entry_price - trailing_sl) / risk
-                        rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * trail_rr
-                        reward = rr * risk
-                        exit_reason = "TP2"
                         is_winner = True
                         trade_closed = True
             
