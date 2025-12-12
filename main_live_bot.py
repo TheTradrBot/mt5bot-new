@@ -1305,7 +1305,11 @@ class LiveTradingBot:
                             new_sl = setup.entry_price - be_buffer
                         
                         setup.trailing_sl = new_sl
-                        self.mt5.modify_sl_tp(pos.ticket, sl=new_sl, tp=tp5 if tp5 else tp3)
+                        target_tp = tp5 or tp3 or tp1
+                        if target_tp:
+                            self.mt5.modify_sl_tp(pos.ticket, sl=new_sl, tp=target_tp)
+                        else:
+                            self.mt5.modify_sl_tp(pos.ticket, sl=new_sl)
                         log.info(f"[{symbol}] Trailing SL moved to BE+buffer ({new_sl:.5f}), target TP5: {tp5 if tp5 else 'N/A'}")
                         self._save_pending_setups()
                     else:
@@ -1325,7 +1329,11 @@ class LiveTradingBot:
                         if FTMO_CONFIG.trail_after_tp2 and tp1:
                             new_trailing_sl = tp1
                             setup.trailing_sl = new_trailing_sl
-                            self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=tp5 if tp5 else tp3)
+                            target_tp = tp5 or tp3
+                            if target_tp:
+                                self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=target_tp)
+                            else:
+                                self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl)
                             log.info(f"[{symbol}] Trailing SL moved to TP1 level ({new_trailing_sl:.5f})")
                         self._save_pending_setups()
                     else:
@@ -1345,7 +1353,11 @@ class LiveTradingBot:
                         if FTMO_CONFIG.trail_after_tp3 and tp2:
                             new_trailing_sl = tp2
                             setup.trailing_sl = new_trailing_sl
-                            self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=tp5 if tp5 else tp4)
+                            target_tp = tp5 or tp4
+                            if target_tp:
+                                self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=target_tp)
+                            else:
+                                self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl)
                             log.info(f"[{symbol}] Trailing SL moved to TP2 level ({new_trailing_sl:.5f})")
                         self._save_pending_setups()
                     else:
@@ -1365,7 +1377,10 @@ class LiveTradingBot:
                         if FTMO_CONFIG.trail_after_tp4 and tp3:
                             new_trailing_sl = tp3
                             setup.trailing_sl = new_trailing_sl
-                            self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=tp5)
+                            if tp5:
+                                self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl, tp=tp5)
+                            else:
+                                self.mt5.modify_sl_tp(pos.ticket, sl=new_trailing_sl)
                             log.info(f"[{symbol}] Trailing SL moved to TP3 level ({new_trailing_sl:.5f}), waiting for TP5 or trailing stop")
                         self._save_pending_setups()
                     else:
