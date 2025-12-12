@@ -32,11 +32,10 @@ OANDA_TO_FTMO: Dict[str, str] = {
     "GBP_CAD": "GBPCAD",
     "GBP_NZD": "GBPNZD",
     
-    # ============ AUD CROSSES (4) ============
+    # ============ AUD CROSSES (3) ============
     "AUD_JPY": "AUDJPY",
     "AUD_CHF": "AUDCHF",
     "AUD_CAD": "AUDCAD",
-    "AUD_NZD": "AUDNZD",
     
     # ============ NZD CROSSES (3) ============
     "NZD_JPY": "NZDJPY",
@@ -67,7 +66,7 @@ ALL_FOREX_PAIRS_OANDA: List[str] = [
     "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "USD_CAD", "AUD_USD", "NZD_USD",
     "EUR_GBP", "EUR_JPY", "EUR_CHF", "EUR_AUD", "EUR_CAD", "EUR_NZD",
     "GBP_JPY", "GBP_CHF", "GBP_AUD", "GBP_CAD", "GBP_NZD",
-    "AUD_JPY", "AUD_CHF", "AUD_CAD", "AUD_NZD",
+    "AUD_JPY", "AUD_CHF", "AUD_CAD",
     "NZD_JPY", "NZD_CHF", "NZD_CAD",
     "CAD_JPY", "CAD_CHF", "CHF_JPY",
 ]
@@ -130,7 +129,6 @@ def get_contract_specs() -> Dict[str, Dict]:
         "AUD_JPY": {"pip_value": 0.01, "contract_size": 100000, "pip_location": 2},
         "AUD_CHF": {"pip_value": 0.0001, "contract_size": 100000, "pip_location": 4},
         "AUD_CAD": {"pip_value": 0.0001, "contract_size": 100000, "pip_location": 4},
-        "AUD_NZD": {"pip_value": 0.0001, "contract_size": 100000, "pip_location": 4},
         "NZD_JPY": {"pip_value": 0.01, "contract_size": 100000, "pip_location": 2},
         "NZD_CHF": {"pip_value": 0.0001, "contract_size": 100000, "pip_location": 4},
         "NZD_CAD": {"pip_value": 0.0001, "contract_size": 100000, "pip_location": 4},

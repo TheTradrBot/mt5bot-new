@@ -1692,6 +1692,12 @@ SUCCESS CRITERIA CHECK:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             
+            total_trades = 0
+            total_wins = 0
+            total_r = 0.0
+            total_profit = 0.0
+            total_challenges = set()
+            
             for month, data in sorted(monthly_data.items()):
                 writer.writerow({
                     "Month": data["month"],
@@ -1702,6 +1708,21 @@ SUCCESS CRITERIA CHECK:
                     "Profit USD": f"${data['profit_usd']:+,.2f}",
                     "Challenges": len(data["challenges"]),
                 })
+                total_trades += data["trades"]
+                total_wins += data["wins"]
+                total_r += data["total_r"]
+                total_profit += data["profit_usd"]
+                total_challenges.update(data["challenges"])
+            
+            writer.writerow({
+                "Month": "TOTAL",
+                "Trades": total_trades,
+                "Wins": total_wins,
+                "Win Rate %": f"{total_wins/max(1,total_trades)*100:.1f}",
+                "Total R": f"{total_r:+.1f}",
+                "Profit USD": f"${total_profit:+,.2f}",
+                "Challenges": len(total_challenges),
+            })
         
         print(f"Monthly performance saved to: {filepath}")
     
@@ -2018,12 +2039,43 @@ def main_challenge_analyzer():
             print(f"  Iteration {entry['iteration']}: {entry['file']} - {entry['changes']}")
     
     print(f"\n{'='*80}")
+    print("APPLYING BEST SETTINGS TO MAIN_LIVE_BOT")
+    print(f"{'='*80}")
+    
+    best_params = optimizer.best_result['params'] if optimizer.best_result else optimizer.get_current_params()
+    best_min_confluence = best_params.get('min_confluence', 4)
+    
+    print(f"Best Min Confluence: {best_min_confluence}")
+    print(f"Updating main_live_bot.py with optimal settings...")
+    
+    optimizer.file_modifier.modify_main_live_bot(
+        iteration=iteration,
+        min_confluence=best_min_confluence,
+    )
+    
+    optimizer.file_modifier.modify_ftmo_config(
+        iteration=iteration,
+        min_confluence_score=best_min_confluence,
+        risk_per_trade_pct=best_params.get('risk_per_trade_pct'),
+        min_quality_factors=best_params.get('min_quality_factors'),
+    )
+    
+    optimizer.file_modifier.modify_strategy_core(
+        iteration=iteration,
+        min_confluence=best_min_confluence,
+        min_quality_factors=best_params.get('min_quality_factors'),
+    )
+    
+    print(f"main_live_bot.py updated with best outcome settings!")
+    
+    print(f"\n{'='*80}")
     print("FTMO CHALLENGE ANALYZER COMPLETE")
     print(f"{'='*80}")
     print(f"Final Status: {'SUCCESS' if success else 'INCOMPLETE'}")
     print(f"Iterations Used: {iteration}")
     print(f"Challenges Passed: {results.get('challenges_passed', 0)}")
     print(f"Challenges Failed: {results.get('challenges_failed', 0)}")
+    print(f"Best Settings Applied: MIN_CONFLUENCE={best_min_confluence}")
     print(f"{'='*80}")
     
     return results
