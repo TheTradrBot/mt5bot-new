@@ -30,14 +30,14 @@ class FTMO10KConfig:
     total_dd_emergency_pct: float = 7.0  # Emergency mode at 7% total DD
 
     # === POSITION SIZING (Match /backtest command) ===
-    risk_per_trade_pct: float = 0.6500000000000014  # Match /backtest command (1% = $2000 per trade on 200K)
+    risk_per_trade_pct: float = 0.8000000000000014  # Match /backtest command (1% = $2000 per trade on 200K)
     max_risk_aggressive_pct: float = 1.0  # Aggressive mode: 1%
     max_risk_normal_pct: float = 0.75  # Normal mode: 0.75%
     max_risk_conservative_pct: float = 0.5  # Conservative mode: 0.5%
     max_cumulative_risk_pct: float = 5.0  # Max total risk across all positions
 
     # === TRADE LIMITS ===
-    max_concurrent_trades: int = 8  # Backtest used up to 21, but 10 balances opportunity with risk
+    max_concurrent_trades: int = 9  # Backtest used up to 21, but 10 balances opportunity with risk
     max_trades_per_day: int = 10  # Increased to match concurrent capacity
     max_trades_per_week: int = 40  # Increased proportionally
     max_pending_orders: int = 20  # Increased pending orders limit
