@@ -4,7 +4,7 @@ Trading parameters optimized for FTMO 200K challenge with maximum safety
 """
 
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 @dataclass
@@ -30,7 +30,7 @@ class FTMO200KConfig:
     total_dd_emergency_pct: float = 7.0  # Emergency mode at 7% total DD
 
     # === POSITION SIZING (Match /backtest command) ===
-    risk_per_trade_pct: float = 0.9500000000000014  # Match /backtest command (1% = $2000 per trade on 200K)
+    risk_per_trade_pct: float = 0.95  # Match /backtest command (1% = $2000 per trade on 200K)
     max_risk_aggressive_pct: float = 1.0  # Aggressive mode: 1%
     max_risk_normal_pct: float = 0.75  # Normal mode: 0.75%
     max_risk_conservative_pct: float = 0.5  # Conservative mode: 0.5%
@@ -55,7 +55,7 @@ class FTMO200KConfig:
     max_sl_atr_ratio: float = 3.0  # Maximum SL = 3.0 * ATR
 
     # === CONFLUENCE SETTINGS ===
-    min_confluence_score: int = 2  # Optimized: 3/7 - matches winning config
+    min_confluence_score: int = 3  # Optimized: 3/7 - matches winning config from optimizer
     min_quality_factors: int = 1  # Minimum 1 quality factor
 
     # === TAKE PROFIT SETTINGS ===
@@ -129,6 +129,42 @@ class FTMO200KConfig:
     # === WEEKLY TRACKING ===
     week_start_date: str = ""  # Track current week
     current_week_trades: int = 0  # Trades this week
+
+    # === LIVE MARKET SAFEGUARDS ===
+    slippage_buffer_pips: float = 2.0  # Execution buffer for slippage
+    min_spread_check: bool = True  # Validate spreads before trading
+    max_spread_pips: Dict[str, float] = field(default_factory=lambda: {
+        # Major Forex pairs - tightest spreads
+        "EURUSD": 2.0,
+        "GBPUSD": 2.5,
+        "USDJPY": 2.0,
+        "USDCHF": 2.5,
+        "AUDUSD": 2.5,
+        "USDCAD": 2.5,
+        "NZDUSD": 3.0,
+        # Cross pairs - slightly wider
+        "EURJPY": 3.0,
+        "GBPJPY": 4.0,
+        "EURGBP": 2.5,
+        "EURAUD": 4.0,
+        "GBPAUD": 5.0,
+        "GBPCAD": 5.0,
+        "AUDJPY": 3.5,
+        # Metals - wider spreads
+        "XAUUSD": 40.0,  # Gold typically 30-50 pips
+        "XAGUSD": 5.0,   # Silver
+        # Indices - varies by broker
+        "US30": 5.0,
+        "NAS100": 3.0,
+        "SPX500": 1.5,
+        # Default for unlisted symbols
+        "DEFAULT": 5.0,
+    })
+
+    # === WEEKEND HOLDING RESTRICTIONS ===
+    weekend_close_enabled: bool = True  # Close all before weekend
+    friday_close_hour_utc: int = 21  # Close positions at 21:00 UTC Friday
+    friday_close_minute_utc: int = 0
 
     def __post_init__(self):
         """Validate configuration parameters"""
@@ -205,6 +241,40 @@ class FTMO200KConfig:
                 return True
 
         return False
+
+    def get_max_spread_pips(self, symbol: str) -> float:
+        """
+        Get maximum allowed spread for a symbol.
+        Returns the configured max spread or DEFAULT if not found.
+        """
+        base_symbol = symbol.replace('.a', '').replace('_m', '').replace('_', '').upper()
+        
+        if base_symbol in self.max_spread_pips:
+            return self.max_spread_pips[base_symbol]
+        
+        # Check partial matches
+        for key, value in self.max_spread_pips.items():
+            if key != "DEFAULT" and key.replace('_', '') == base_symbol:
+                return value
+        
+        return self.max_spread_pips.get("DEFAULT", 5.0)
+
+    def is_spread_acceptable(self, symbol: str, current_spread_pips: float) -> bool:
+        """
+        Check if current spread is acceptable for trading.
+        
+        Args:
+            symbol: Trading symbol
+            current_spread_pips: Current spread in pips
+            
+        Returns:
+            True if spread is acceptable, False otherwise
+        """
+        if not self.min_spread_check:
+            return True
+        
+        max_spread = self.get_max_spread_pips(symbol)
+        return current_spread_pips <= max_spread
 
     def get_dynamic_lot_size_multiplier(
         self,

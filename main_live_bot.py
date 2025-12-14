@@ -97,7 +97,7 @@ MT5_PASSWORD = os.getenv("MT5_PASSWORD", "")
 SCAN_INTERVAL_HOURS = int(os.getenv("SCAN_INTERVAL_HOURS", "4"))
 
 # Use EXACT same confluence as backtest_live_bot.py
-MIN_CONFLUENCE = 2  # Modified by optimizer - matches winning config
+MIN_CONFLUENCE = 3  # Modified by optimizer - matches winning config from optimizer
 
 # Use EXACT same assets as Discord /backtest command (34 assets)
 TRADABLE_SYMBOLS = FOREX_PAIRS + METALS + INDICES + CRYPTO_ASSETS  # 28 forex + 2 metals + 2 indices + 2 crypto = 34 assets
@@ -126,6 +126,7 @@ class LiveTradingBot:
     """
     
     PENDING_SETUPS_FILE = "pending_setups.json"
+    TRADING_DAYS_FILE = "trading_days.json"
     VALIDATE_INTERVAL_MINUTES = 10
     MAIN_LOOP_INTERVAL_SECONDS = 10
     
@@ -145,7 +146,13 @@ class LiveTradingBot:
         
         self.challenge_manager: Optional[ChallengeRiskManager] = None
         
+        # Trading days tracking for FTMO minimum trading days requirement
+        self.trading_days: set = set()
+        self.challenge_start_date: Optional[datetime] = None
+        self.challenge_end_date: Optional[datetime] = None
+        
         self._load_pending_setups()
+        self._load_trading_days()
         self._auto_start_challenge()
     
     def _load_pending_setups(self):
