@@ -166,9 +166,11 @@ def calculate_robustness_score(
     Calculate multi-metric robustness score for walk-forward validation.
     
     Components:
-    1. Multi-quarter consistency: Pass rate variance across quarters
-    2. Max drawdown penalty: Penalize high drawdowns
-    3. Sharpe-like ratio: Mean R / Std R across all trades
+    1. Overall profitability: Total R across all quarters (primary metric)
+    2. Win rate quality: Average win rate across quarters
+    3. Max drawdown penalty: Penalize high drawdowns
+    4. Challenge pass rate: Percentage of challenges passed
+    5. Quarterly consistency bonus: Reward profitable quarters
     
     Args:
         quarterly_metrics: Dict of quarter -> metrics from run_quarterly_backtest
@@ -184,62 +186,76 @@ def calculate_robustness_score(
     win_rates = [m.get("win_rate", 0) for m in quarterly_metrics.values()]
     total_rs = [m.get("total_r", 0) for m in quarterly_metrics.values()]
     
-    # 1. Multi-quarter consistency (lower variance = better)
-    if len(win_rates) > 1:
-        wr_mean = sum(win_rates) / len(win_rates)
-        wr_variance = sum((wr - wr_mean)**2 for wr in win_rates) / len(win_rates)
-        consistency_score = max(0, 100 - wr_variance)  # 100 = perfect consistency
+    # 1. Overall profitability score (total R across year)
+    annual_total_r = sum(total_rs)
+    if annual_total_r >= 100:
+        profitability_score = 100
+    elif annual_total_r >= 50:
+        profitability_score = 85 + (annual_total_r - 50) * 0.3
+    elif annual_total_r >= 20:
+        profitability_score = 70 + (annual_total_r - 20) * 0.5
+    elif annual_total_r > 0:
+        profitability_score = 50 + annual_total_r * 1.0
     else:
-        consistency_score = 50  # Neutral if only 1 quarter
+        profitability_score = max(0, 50 + annual_total_r * 2)
     
-    # 2. Max drawdown penalty (lower drawdown = better)
+    # 2. Win rate quality score
+    avg_win_rate = sum(win_rates) / len(win_rates) if win_rates else 0
+    if avg_win_rate >= 70:
+        winrate_score = 100
+    elif avg_win_rate >= 60:
+        winrate_score = 80 + (avg_win_rate - 60) * 2
+    elif avg_win_rate >= 50:
+        winrate_score = 60 + (avg_win_rate - 50) * 2
+    else:
+        winrate_score = max(0, avg_win_rate * 1.2)
+    
+    # 3. Max drawdown penalty (adjusted thresholds)
     if max_drawdown_pct >= 10:
-        dd_score = 0  # Failed FTMO limit
-    elif max_drawdown_pct >= 7:
-        dd_score = 25  # Approaching danger zone
-    elif max_drawdown_pct >= 5:
-        dd_score = 50  # Warning zone
-    elif max_drawdown_pct >= 3:
-        dd_score = 75  # Good
+        dd_score = 0
+    elif max_drawdown_pct >= 8:
+        dd_score = 40
+    elif max_drawdown_pct >= 6:
+        dd_score = 60
+    elif max_drawdown_pct >= 4:
+        dd_score = 80
     else:
-        dd_score = 100  # Excellent
+        dd_score = 100
     
-    # 3. Sharpe-like ratio (mean R / std R)
-    all_avg_r = [m.get("avg_r", 0) for m in quarterly_metrics.values()]
-    all_std_r = [m.get("r_std", 1) for m in quarterly_metrics.values()]
-    
-    if all_std_r and sum(all_std_r) > 0:
-        overall_avg_r = sum(all_avg_r) / len(all_avg_r)
-        overall_std_r = sum(all_std_r) / len(all_std_r)
-        sharpe_like = overall_avg_r / max(0.01, overall_std_r)
-        sharpe_score = min(100, max(0, sharpe_like * 50 + 50))  # Scale to 0-100
-    else:
-        sharpe_score = 50
-    
-    # 4. Challenge pass rate bonus
+    # 4. Challenge pass rate score
     pass_rate_score = challenge_pass_rate * 100
     
-    # Weighted final score
+    # 5. Quarterly consistency bonus (how many quarters were profitable)
+    profitable_quarters = sum(1 for r in total_rs if r > 0)
+    consistency_score = (profitable_quarters / len(total_rs)) * 100 if total_rs else 0
+    
+    # Weighted final score - heavily prioritize profitability
     weights = {
-        "consistency": 0.25,
-        "drawdown": 0.25,
-        "sharpe": 0.25,
-        "pass_rate": 0.25,
+        "profitability": 0.40,
+        "winrate": 0.25,
+        "drawdown": 0.10,
+        "pass_rate": 0.15,
+        "consistency": 0.10,
     }
     
     robustness_score = (
-        consistency_score * weights["consistency"] +
+        profitability_score * weights["profitability"] +
+        winrate_score * weights["winrate"] +
         dd_score * weights["drawdown"] +
-        sharpe_score * weights["sharpe"] +
-        pass_rate_score * weights["pass_rate"]
+        pass_rate_score * weights["pass_rate"] +
+        consistency_score * weights["consistency"]
     )
     
     breakdown = {
-        "consistency_score": consistency_score,
+        "profitability_score": profitability_score,
+        "winrate_score": winrate_score,
         "drawdown_score": dd_score,
-        "sharpe_score": sharpe_score,
         "pass_rate_score": pass_rate_score,
+        "consistency_score": consistency_score,
         "weights": weights,
+        "annual_total_r": annual_total_r,
+        "avg_win_rate": avg_win_rate,
+        "profitable_quarters": profitable_quarters,
         "quarterly_win_rates": win_rates,
         "quarterly_total_rs": total_rs,
         "max_drawdown_pct": max_drawdown_pct,
