@@ -1447,7 +1447,8 @@ class PerformanceOptimizer:
         self.current_max_concurrent = self.config.max_concurrent_trades
         self.current_min_quality = self.config.min_quality_factors
         
-        self.excluded_assets: List[str] = []
+        # Only exclude AUDNZD as specified - no dynamic exclusions
+        self.excluded_assets: List[str] = ["AUD_NZD"]
         self.best_result: Optional[Dict] = None
         self.best_score: float = -999999
         
@@ -1657,14 +1658,16 @@ class PerformanceOptimizer:
         """Determine what optimizations to apply based on patterns."""
         optimizations = {}
         
+        # Disabled dynamic asset exclusion - only AUDNZD is excluded (set in __init__)
+        # This ensures all symbols are traded regardless of individual performance
         low_wr_assets = patterns.get("low_winrate_assets", [])
         low_r_assets = patterns.get("low_r_assets", [])
         
+        # Log underperforming assets but don't exclude them
         if low_wr_assets or low_r_assets:
-            assets_to_exclude = list(set(low_wr_assets + low_r_assets))
-            if assets_to_exclude:
-                self.add_excluded_assets(assets_to_exclude)
-                print(f"  [Optimizer] Excluding {len(assets_to_exclude)} underperforming assets")
+            assets_info = list(set(low_wr_assets + low_r_assets))
+            if assets_info:
+                print(f"  [Optimizer] Note: {len(assets_info)} assets below thresholds (not excluding)")
         
         if patterns["total_trades"] < self.MIN_TRADES_NEEDED:
             new_confluence = max(2, self.current_min_confluence - 1)
