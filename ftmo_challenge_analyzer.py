@@ -1918,9 +1918,9 @@ class PerformanceOptimizer:
             excluded_assets=excluded_assets or self.excluded_assets,
         )
         
-        wins = sum(1 for t in trades if t.r_multiple > 0)
-        losses = sum(1 for t in trades if t.r_multiple <= 0)
-        total_r = sum(t.r_multiple for t in trades)
+        wins = sum(1 for t in trades if getattr(t, 'rr', getattr(t, 'r_multiple', 0)) > 0)
+        losses = sum(1 for t in trades if getattr(t, 'rr', getattr(t, 'r_multiple', 0)) <= 0)
+        total_r = sum(getattr(t, 'rr', getattr(t, 'r_multiple', 0)) for t in trades)
         
         validation_results = {
             "period": "Validation (Oct-Dec 2024)",
@@ -2314,10 +2314,32 @@ def run_full_period_backtest(
         print(f"Processing {asset}...", end=" ")
         
         try:
-            daily_data = get_ohlcv_api(asset, timeframe="D", count=1000, use_cache=True)
-            weekly_data = get_ohlcv_api(asset, timeframe="W", count=200, use_cache=True) or []
-            monthly_data = get_ohlcv_api(asset, timeframe="M", count=60, use_cache=True) or []
-            h4_data = get_ohlcv_api(asset, timeframe="H4", count=1000, use_cache=True) or []
+            lookback_start = start_date - timedelta(days=365)
+            
+            daily_data = get_ohlcv_api(
+                asset, timeframe="D", 
+                start_date=lookback_start,
+                end_date=end_date,
+                use_cache=True
+            )
+            weekly_data = get_ohlcv_api(
+                asset, timeframe="W",
+                start_date=lookback_start - timedelta(days=365),
+                end_date=end_date,
+                use_cache=True
+            ) or []
+            monthly_data = get_ohlcv_api(
+                asset, timeframe="M",
+                start_date=lookback_start - timedelta(days=730),
+                end_date=end_date,
+                use_cache=True
+            ) or []
+            h4_data = get_ohlcv_api(
+                asset, timeframe="H4",
+                start_date=start_date - timedelta(days=90),
+                end_date=end_date,
+                use_cache=True
+            ) or []
             
             oanda_data = None
             try:
