@@ -1069,5 +1069,34 @@
       "MIN_CONFLUENCE -> 5"
     ],
     "timestamp": "2025-12-14T23:25:25.148091"
+  },
+  {
+    "iteration": 4,
+    "file": "ftmo_config.py",
+    "backup": "ftmo_optimization_backups/ftmo_config_iter4_20251214_232624.py",
+    "changes": [
+      "min_confluence_score -> 6",
+      "min_quality_factors -> 3"
+    ],
+    "timestamp": "2025-12-14T23:26:24.838496"
+  },
+  {
+    "iteration": 4,
+    "file": "strategy_core.py",
+    "backup": "ftmo_optimization_backups/strategy_core_iter4_20251214_232624.py",
+    "changes": [
+      "min_confluence -> 6",
+      "min_quality_factors -> 3"
+    ],
+    "timestamp": "2025-12-14T23:26:24.848819"
+  },
+  {
+    "iteration": 4,
+    "file": "main_live_bot.py",
+    "backup": "ftmo_optimization_backups/main_live_bot_iter4_20251214_232624.py",
+    "changes": [
+      "MIN_CONFLUENCE -> 6"
+    ],
+    "timestamp": "2025-12-14T23:26:24.858759"
   }
 ]

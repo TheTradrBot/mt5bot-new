@@ -41,8 +41,8 @@ class StrategyParams:
     
     These control confluence thresholds, SL/TP ratios, filters, etc.
     """
-    min_confluence: int = 6
-    min_quality_factors: int = 3
+    min_confluence: int = 5
+    min_quality_factors: int = 2
     
     atr_sl_multiplier: float = 1.5
     atr_tp1_multiplier: float = 0.6

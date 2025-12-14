@@ -97,7 +97,7 @@ MT5_PASSWORD = os.getenv("MT5_PASSWORD", "")
 SCAN_INTERVAL_HOURS = int(os.getenv("SCAN_INTERVAL_HOURS", "4"))
 
 # Use EXACT same confluence as backtest_live_bot.py
-MIN_CONFLUENCE = 6  # Modified by optimizer - matches winning config from optimizer
+MIN_CONFLUENCE = 5  # Modified by optimizer - matches winning config from optimizer
 
 # Use EXACT same assets as Discord /backtest command (34 assets)
 TRADABLE_SYMBOLS = FOREX_PAIRS + METALS + INDICES + CRYPTO_ASSETS  # 28 forex + 2 metals + 2 indices + 2 crypto = 34 assets
