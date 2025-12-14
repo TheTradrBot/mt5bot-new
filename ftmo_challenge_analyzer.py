@@ -476,12 +476,12 @@ class BacktestTrade:
             "TP5 Price": self.tp5_price or "",
             "Exit Date": self.exit_date.strftime("%Y-%m-%d %H:%M:%S") if self.exit_date else "",
             "Exit Price": self.exit_price,
-            "TP1 Hit?": f"YES ({self.tp1_hit_date.strftime('%Y-%m-%d')})" if self.tp1_hit and self.tp1_hit_date else "NO",
-            "TP2 Hit?": f"YES ({self.tp2_hit_date.strftime('%Y-%m-%d')})" if self.tp2_hit and self.tp2_hit_date else "NO",
-            "TP3 Hit?": f"YES ({self.tp3_hit_date.strftime('%Y-%m-%d')})" if self.tp3_hit and self.tp3_hit_date else "NO",
-            "TP4 Hit?": f"YES ({self.tp4_hit_date.strftime('%Y-%m-%d')})" if self.tp4_hit and self.tp4_hit_date else "NO",
-            "TP5 Hit?": f"YES ({self.tp5_hit_date.strftime('%Y-%m-%d')})" if self.tp5_hit and self.tp5_hit_date else "NO",
-            "SL Hit?": f"YES ({self.sl_hit_date.strftime('%Y-%m-%d')})" if self.sl_hit and self.sl_hit_date else "NO",
+            "TP1 Hit?": f"YES ({self.tp1_hit_date.strftime('%Y-%m-%d')})" if self.tp1_hit and self.tp1_hit_date else ("YES" if self.tp1_hit else "NO"),
+            "TP2 Hit?": f"YES ({self.tp2_hit_date.strftime('%Y-%m-%d')})" if self.tp2_hit and self.tp2_hit_date else ("YES" if self.tp2_hit else "NO"),
+            "TP3 Hit?": f"YES ({self.tp3_hit_date.strftime('%Y-%m-%d')})" if self.tp3_hit and self.tp3_hit_date else ("YES" if self.tp3_hit else "NO"),
+            "TP4 Hit?": f"YES ({self.tp4_hit_date.strftime('%Y-%m-%d')})" if self.tp4_hit and self.tp4_hit_date else ("YES" if self.tp4_hit else "NO"),
+            "TP5 Hit?": f"YES ({self.tp5_hit_date.strftime('%Y-%m-%d')})" if self.tp5_hit and self.tp5_hit_date else ("YES" if self.tp5_hit else "NO"),
+            "SL Hit?": f"YES ({self.sl_hit_date.strftime('%Y-%m-%d')})" if self.sl_hit and self.sl_hit_date else ("YES" if self.sl_hit else "NO"),
             "Final Exit Reason": self.exit_reason,
             "R Multiple": f"{self.r_multiple:+.2f}R",
             "Profit/Loss USD": f"${self.profit_loss_usd:+.2f}",
@@ -1088,8 +1088,18 @@ class ChallengeSequencer:
         
         holding_hours = 0.0
         if entry_dt and exit_dt:
-            delta = exit_dt - entry_dt
-            holding_hours = delta.total_seconds() / 3600
+            if isinstance(entry_dt, datetime) and isinstance(exit_dt, datetime):
+                try:
+                    if entry_dt.tzinfo is not None and exit_dt.tzinfo is None:
+                        exit_dt = exit_dt.replace(tzinfo=entry_dt.tzinfo)
+                    elif entry_dt.tzinfo is None and exit_dt.tzinfo is not None:
+                        entry_dt = entry_dt.replace(tzinfo=exit_dt.tzinfo)
+                    delta = exit_dt - entry_dt
+                    holding_hours = delta.total_seconds() / 3600
+                    if holding_hours < 0:
+                        holding_hours = abs(holding_hours)
+                except Exception:
+                    holding_hours = 0.0
         
         profit_usd = trade.rr * risk_per_trade_usd
         
@@ -1097,22 +1107,38 @@ class ChallengeSequencer:
         if abs(trade.rr) < 0.1:
             result = "BREAKEVEN"
         
-        tp1_hit = "TP1" in trade.exit_reason
-        tp2_hit = "TP2" in trade.exit_reason
-        tp3_hit = "TP3" in trade.exit_reason
-        sl_hit = trade.exit_reason == "SL"
+        tp1_hit = getattr(trade, 'tp1_hit', False)
+        tp2_hit = getattr(trade, 'tp2_hit', False)
+        tp3_hit = getattr(trade, 'tp3_hit', False)
+        tp4_hit = getattr(trade, 'tp4_hit', False)
+        tp5_hit = getattr(trade, 'tp5_hit', False)
         
-        lot_size = 0.0
-        if risk_pips > 0:
+        exit_reason = trade.exit_reason or ""
+        if "TP5" in exit_reason:
+            tp5_hit = tp4_hit = tp3_hit = tp2_hit = tp1_hit = True
+        elif "TP4" in exit_reason:
+            tp4_hit = tp3_hit = tp2_hit = tp1_hit = True
+        elif "TP3" in exit_reason:
+            tp3_hit = tp2_hit = tp1_hit = True
+        elif "TP2" in exit_reason:
+            tp2_hit = tp1_hit = True
+        elif "TP1" in exit_reason:
+            tp1_hit = True
+        
+        sl_hit = exit_reason == "SL"
+        
+        if risk_pips <= 0:
+            lot_size = 0.0
+        else:
             if "XAU" in trade.symbol.upper() or "GOLD" in trade.symbol.upper():
-                pip_value = 1.0  # Gold: 100 oz * $0.01 pip = $1 per pip per lot
+                pip_value = 1.0
             elif "XAG" in trade.symbol.upper() or "SILVER" in trade.symbol.upper():
-                pip_value = 5.0  # Silver: 5000 oz * $0.001 pip ≈ $5 per pip per lot
+                pip_value = 5.0
             elif "JPY" in trade.symbol.upper():
-                pip_value = 6.67  # Approximation at USD/JPY ≈ 150
+                pip_value = 6.67
             else:
-                pip_value = 10.0  # Standard forex: 100,000 * 0.0001 = $10 per pip per lot
-            lot_size = risk_per_trade_usd / (risk_pips * pip_value)
+                pip_value = 10.0
+            lot_size = round(risk_per_trade_usd / (risk_pips * pip_value), 2)
         
         return BacktestTrade(
             trade_num=self.trade_counter,
@@ -1127,6 +1153,8 @@ class ChallengeSequencer:
             tp1_price=trade.tp1 or 0.0,
             tp2_price=trade.tp2,
             tp3_price=trade.tp3,
+            tp4_price=trade.tp4,
+            tp5_price=trade.tp5,
             exit_date=exit_dt,
             exit_price=trade.exit_price,
             tp1_hit=tp1_hit,
@@ -1135,6 +1163,10 @@ class ChallengeSequencer:
             tp2_hit_date=exit_dt if tp2_hit else None,
             tp3_hit=tp3_hit,
             tp3_hit_date=exit_dt if tp3_hit else None,
+            tp4_hit=tp4_hit,
+            tp4_hit_date=exit_dt if tp4_hit else None,
+            tp5_hit=tp5_hit,
+            tp5_hit_date=exit_dt if tp5_hit else None,
             sl_hit=sl_hit,
             sl_hit_date=exit_dt if sl_hit else None,
             exit_reason=trade.exit_reason,
@@ -2434,6 +2466,27 @@ def run_full_period_backtest(
             print(f"Error: {e}")
     
     all_trades.sort(key=lambda t: t.entry_date if t.entry_date else datetime.min)
+    
+    seen_trades = set()
+    deduplicated_trades = []
+    for trade in all_trades:
+        trade_dt = trade.entry_date
+        if isinstance(trade_dt, str):
+            try:
+                trade_dt = datetime.fromisoformat(trade_dt.replace("Z", "+00:00"))
+            except:
+                pass
+        trade_date_str = trade_dt.strftime("%Y-%m-%d") if isinstance(trade_dt, datetime) else str(trade_dt)[:10]
+        trade_key = (trade.symbol, trade.direction, trade_date_str)
+        if trade_key not in seen_trades:
+            seen_trades.add(trade_key)
+            deduplicated_trades.append(trade)
+    
+    duplicates_removed = len(all_trades) - len(deduplicated_trades)
+    if duplicates_removed > 0:
+        print(f"Deduplication: Removed {duplicates_removed} duplicate trades (same symbol+direction+date)")
+    
+    all_trades = deduplicated_trades
     
     print(f"\n{'='*80}")
     print(f"BACKTEST COMPLETE: {len(all_trades)} total trades")

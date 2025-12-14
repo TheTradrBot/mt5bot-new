@@ -821,7 +821,21 @@ class LiveTradingBot:
                 log.info(f"[{symbol}] Max cumulative risk reached: {snapshot.total_risk_pct:.1f}%/{FTMO_CONFIG.max_cumulative_risk_pct}%")
                 return False
             
-            risk_pct = FTMO_CONFIG.get_risk_pct(daily_loss_pct, total_dd_pct)
+            win_streak = getattr(self.risk_manager.state, 'win_streak', 0) if hasattr(self.risk_manager, 'state') else 0
+            loss_streak = getattr(self.risk_manager.state, 'loss_streak', 0) if hasattr(self.risk_manager, 'state') else 0
+            
+            if FTMO_CONFIG.use_dynamic_lot_sizing:
+                risk_pct = FTMO_CONFIG.get_dynamic_risk_pct(
+                    confluence_score=confluence,
+                    win_streak=win_streak,
+                    loss_streak=loss_streak,
+                    current_profit_pct=profit_pct,
+                    daily_loss_pct=daily_loss_pct,
+                    total_dd_pct=total_dd_pct,
+                )
+                log.info(f"[{symbol}] Dynamic risk: {risk_pct:.3f}% (confluence: {confluence}/7, win_streak: {win_streak}, loss_streak: {loss_streak})")
+            else:
+                risk_pct = FTMO_CONFIG.get_risk_pct(daily_loss_pct, total_dd_pct)
             
             if risk_pct <= 0:
                 log.warning(f"[{symbol}] Risk percentage is 0 - trading halted")
