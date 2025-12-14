@@ -5,47 +5,41 @@ FTMO CHALLENGE PERFORMANCE - JAN 2025 TO NOV 2025
 
 PERIOD: January 1, 2025 - November 30, 2025 (11 months)
 ACCOUNT SIZE: $200,000 (per challenge)
-TOTAL TRADES EXECUTED: 117
+TOTAL TRADES EXECUTED: 0
 
 CHALLENGE RESULTS:
 ------------------
-Challenges PASSED (Both Steps): 5
-Challenges FAILED: 1
-Success Rate: 83.3%
+Challenges PASSED (Both Steps): 0
+Challenges FAILED: 0
+Success Rate: 0.0%
 
 CHALLENGE DETAILS:
 ------------------
-Challenge #1: PASSED | Step 1: +10.3% | Step 2: +5.6% | Total: $32,838
-Challenge #2: PASSED | Step 1: +10.6% | Step 2: +6.4% | Total: $35,423
-Challenge #3: PASSED | Step 1: +12.2% | Step 2: +5.8% | Total: $37,350
-Challenge #4: PASSED | Step 1: +10.8% | Step 2: +7.2% | Total: $37,481
-Challenge #5: PASSED | Step 1: +11.0% | Step 2: +6.3% | Total: $35,966
-Challenge #6: FAILED | Step 1: +2.4% | Failed at: Step 1
 
 TRADING STATISTICS:
 -------------------
-Total Trades: 117
-Winning Trades: 78
-Losing Trades: 20
-Win Rate: 66.7%
-Average R per Trade: +0.72R
-Best Trade: +2.6R (GBP_NZD)
-Worst Trade: -1.0R
+Total Trades: 0
+Winning Trades: 0
+Losing Trades: 0
+Win Rate: 0.0%
+Average R per Trade: +0.00R
+Best Trade: N/A
+Worst Trade: N/A
 
 PROFITABILITY ANALYSIS:
 -----------------------
-Gross Profit: $+224,907.55
-Gross Loss: $-41,023.30
-Net Profit: $+183,884.25
+Gross Profit: $+0.00
+Gross Loss: $0.00
+Net Profit: $+0.00
 
 EARNING POTENTIAL:
 ------------------
-TOTAL FROM 5 PASSED CHALLENGES: $179,056.31
+TOTAL FROM 0 PASSED CHALLENGES: $0.00
 
 SUCCESS CRITERIA CHECK:
 -----------------------
-Minimum 14 Challenges Passed: NO (5 passed, need 9 more)
-Maximum 2 Challenges Failed: YES (1 failed)
+Minimum 14 Challenges Passed: NO (0 passed, need 14 more)
+Maximum 2 Challenges Failed: YES (0 failed)
 
 *** CRITERIA NOT MET - OPTIMIZATION REQUIRED ***
 

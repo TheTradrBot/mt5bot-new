@@ -34,7 +34,7 @@ from strategy_core import (
     get_default_params,
 )
 
-from data import get_ohlcv as get_ohlcv_api
+from data_provider import get_ohlcv as get_ohlcv_api
 from ftmo_config import FTMO_CONFIG, FTMO10KConfig, get_pip_size, get_sl_limits
 from config import FOREX_PAIRS, METALS, INDICES, CRYPTO_ASSETS
 from tradr.data.oanda import OandaClient

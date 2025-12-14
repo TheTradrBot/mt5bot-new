@@ -1,0 +1,1772 @@
+#!/usr/bin/env python3
+"""
+Tradr Bot - Standalone MT5 Live Trading Bot
+
+This bot runs 24/7 on your Windows VM and trades using the EXACT SAME
+strategy logic that produced the great backtest results. Discord is NOT
+required for trading - the bot operates independently.
+
+IMPORTANT: Uses strategy_core.py directly - the same code as backtests!
+
+Usage:
+    python main_live_bot.py
+
+Configuration:
+    Set environment variables in .env file:
+    - MT5_SERVER: Broker server name (e.g., "FTMO-Demo")
+    - MT5_LOGIN: Account login number
+    - MT5_PASSWORD: Account password
+    - SCAN_INTERVAL_HOURS: How often to scan (default: 4)
+"""
+
+import os
+import sys
+import time
+import json
+import signal as sig_module
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import List, Dict, Optional
+from dataclasses import dataclass, asdict
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+from strategy_core import (
+    StrategyParams,
+    compute_confluence,
+    compute_trade_levels,
+    _infer_trend,
+    _pick_direction_from_bias,
+)
+
+from tradr.mt5.client import MT5Client, PendingOrder
+from tradr.risk.manager import RiskManager
+from tradr.utils.logger import setup_logger
+from challenge_risk_manager import ChallengeRiskManager, ChallengeConfig, RiskMode, ActionType, create_challenge_manager
+
+CHALLENGE_MODE = True
+
+
+@dataclass
+class PendingSetup:
+    """Tracks a pending trade setup waiting for entry."""
+    symbol: str
+    direction: str
+    entry_price: float
+    stop_loss: float
+    tp1: float
+    tp2: Optional[float]
+    tp3: Optional[float]
+    tp4: Optional[float] = None
+    tp5: Optional[float] = None
+    confluence: int = 0
+    confluence_score: int = 0
+    quality_factors: int = 0
+    entry_distance_r: float = 0.0
+    created_at: str = ""
+    order_ticket: Optional[int] = None
+    status: str = "pending"
+    lot_size: float = 0.0
+    partial_closes: int = 0
+    trailing_sl: Optional[float] = None
+    tp1_hit: bool = False
+    tp2_hit: bool = False
+    tp3_hit: bool = False
+    tp4_hit: bool = False
+    
+    def to_dict(self) -> Dict:
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict) -> "PendingSetup":
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
+
+from config import SIGNAL_MODE, MIN_CONFLUENCE_STANDARD, MIN_CONFLUENCE_AGGRESSIVE
+from config import FOREX_PAIRS, METALS, INDICES, CRYPTO_ASSETS
+from symbol_mapping import ALL_TRADABLE_OANDA, ftmo_to_oanda, oanda_to_ftmo
+from ftmo_config import FTMO_CONFIG
+
+
+MT5_SERVER = os.getenv("MT5_SERVER", "")
+MT5_LOGIN = int(os.getenv("MT5_LOGIN", "0"))
+MT5_PASSWORD = os.getenv("MT5_PASSWORD", "")
+SCAN_INTERVAL_HOURS = int(os.getenv("SCAN_INTERVAL_HOURS", "4"))
+
+# Use EXACT same confluence as backtest_live_bot.py
+MIN_CONFLUENCE = 2  # Modified by optimizer - matches winning config from optimizer
+
+# Use EXACT same assets as Discord /backtest command (34 assets)
+TRADABLE_SYMBOLS = FOREX_PAIRS + METALS + INDICES + CRYPTO_ASSETS  # 28 forex + 2 metals + 2 indices + 2 crypto = 34 assets
+
+log = setup_logger("tradr", log_file="logs/tradr_live.log")
+running = True
+
+
+def signal_handler(sig, frame):
+    """Handle shutdown signals gracefully."""
+    global running
+    log.info("Shutdown signal received, stopping bot...")
+    running = False
+
+
+sig_module.signal(sig_module.SIGINT, signal_handler)
+sig_module.signal(sig_module.SIGTERM, signal_handler)
+
+
+class LiveTradingBot:
+    """
+    Main live trading bot.
+    
+    Uses the EXACT SAME strategy logic as backtest.py for perfect parity.
+    Now uses pending orders to match backtest entry behavior exactly.
+    """
+    
+    PENDING_SETUPS_FILE = "pending_setups.json"
+    TRADING_DAYS_FILE = "trading_days.json"
+    VALIDATE_INTERVAL_MINUTES = 10
+    MAIN_LOOP_INTERVAL_SECONDS = 10
+    
+    def __init__(self):
+        self.mt5 = MT5Client(
+            server=MT5_SERVER,
+            login=MT5_LOGIN,
+            password=MT5_PASSWORD,
+        )
+        self.risk_manager = RiskManager(state_file="challenge_state.json")
+        self.params = StrategyParams()
+        self.last_scan_time: Optional[datetime] = None
+        self.last_validate_time: Optional[datetime] = None
+        self.scan_count = 0
+        self.pending_setups: Dict[str, PendingSetup] = {}
+        self.symbol_map: Dict[str, str] = {}  # our_symbol -> broker_symbol
+        
+        self.challenge_manager: Optional[ChallengeRiskManager] = None
+        
+        # Trading days tracking for FTMO minimum trading days requirement
+        self.trading_days: set = set()
+        self.challenge_start_date: Optional[datetime] = None
+        self.challenge_end_date: Optional[datetime] = None
+        
+        self._load_pending_setups()
+        self._load_trading_days()
+        self._auto_start_challenge()
+    
+    def _load_pending_setups(self):
+        """Load pending setups from file."""
+        try:
+            if Path(self.PENDING_SETUPS_FILE).exists():
+                with open(self.PENDING_SETUPS_FILE, 'r') as f:
+                    data = json.load(f)
+                for symbol, setup_dict in data.items():
+                    self.pending_setups[symbol] = PendingSetup.from_dict(setup_dict)
+                log.info(f"Loaded {len(self.pending_setups)} pending setups from file")
+        except Exception as e:
+            log.error(f"Error loading pending setups: {e}")
+            self.pending_setups = {}
+    
+    def _save_pending_setups(self):
+        """Save pending setups to file."""
+        try:
+            data = {symbol: setup.to_dict() for symbol, setup in self.pending_setups.items()}
+            with open(self.PENDING_SETUPS_FILE, 'w') as f:
+                json.dump(data, f, indent=2, default=str)
+        except Exception as e:
+            log.error(f"Error saving pending setups: {e}")
+    
+    def _load_trading_days(self):
+        """Load trading days from file for FTMO minimum trading days tracking."""
+        try:
+            if Path(self.TRADING_DAYS_FILE).exists():
+                with open(self.TRADING_DAYS_FILE, 'r') as f:
+                    data = json.load(f)
+                self.trading_days = set(data.get("trading_days", []))
+                start_date_str = data.get("challenge_start_date")
+                end_date_str = data.get("challenge_end_date")
+                if start_date_str:
+                    normalized = start_date_str.replace("Z", "+00:00")
+                    self.challenge_start_date = datetime.fromisoformat(normalized)
+                if end_date_str:
+                    normalized = end_date_str.replace("Z", "+00:00")
+                    self.challenge_end_date = datetime.fromisoformat(normalized)
+                log.info(f"Loaded {len(self.trading_days)} trading days from file")
+        except Exception as e:
+            log.error(f"Error loading trading days: {e}")
+            self.trading_days = set()
+    
+    def start_new_challenge(self, duration_days: int = 30):
+        """
+        Start a new challenge period with fresh trading days tracking.
+        Call this when starting Phase 1, Phase 2, or resetting the challenge.
+        """
+        self.trading_days = set()
+        self.challenge_start_date = datetime.now(timezone.utc)
+        self.challenge_end_date = self.challenge_start_date + timedelta(days=duration_days)
+        self._save_trading_days()
+        log.info(f"New challenge started: {self.challenge_start_date.date()} to {self.challenge_end_date.date()} ({duration_days} days)")
+    
+    def _save_trading_days(self):
+        """Save trading days to file."""
+        try:
+            data = {
+                "trading_days": list(self.trading_days),
+                "challenge_start_date": self.challenge_start_date.isoformat() if self.challenge_start_date else None,
+                "challenge_end_date": self.challenge_end_date.isoformat() if self.challenge_end_date else None,
+            }
+            with open(self.TRADING_DAYS_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            log.error(f"Error saving trading days: {e}")
+    
+    def record_trading_day(self):
+        """
+        Record today as a trading day when a trade is executed.
+        Called after successful order placement/fill.
+        """
+        from ftmo_config import FTMO_CONFIG
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if today not in self.trading_days:
+            self.trading_days.add(today)
+            self._save_trading_days()
+            log.info(f"Recorded trading day: {today} (Total: {len(self.trading_days)}/{FTMO_CONFIG.min_trading_days} required)")
+    
+    def check_trading_days_warning(self) -> bool:
+        """
+        Check if we're at risk of not meeting minimum trading days requirement.
+        Returns True if warning should be shown (not enough days traded relative to time remaining).
+        """
+        from ftmo_config import FTMO_CONFIG
+        
+        if self.challenge_end_date is None:
+            return False
+        
+        now = datetime.now(timezone.utc)
+        days_remaining = (self.challenge_end_date - now).days
+        trading_days_count = len(self.trading_days)
+        days_needed = FTMO_CONFIG.min_trading_days - trading_days_count
+        
+        if days_needed <= 0:
+            return False
+        
+        if days_remaining <= days_needed + 2:
+            log.warning(f"TRADING DAYS WARNING: {trading_days_count}/{FTMO_CONFIG.min_trading_days} days traded, "
+                       f"{days_remaining} days remaining in challenge. Need {days_needed} more trading days!")
+            return True
+        
+        return False
+    
+    def get_trading_days_status(self) -> Dict:
+        """Get current trading days status for reporting."""
+        from ftmo_config import FTMO_CONFIG
+        
+        trading_days_count = len(self.trading_days)
+        days_needed = max(0, FTMO_CONFIG.min_trading_days - trading_days_count)
+        
+        status = {
+            "trading_days_count": trading_days_count,
+            "min_required": FTMO_CONFIG.min_trading_days,
+            "days_needed": days_needed,
+            "trading_days": sorted(list(self.trading_days)),
+            "requirement_met": trading_days_count >= FTMO_CONFIG.min_trading_days,
+        }
+        
+        if self.challenge_end_date:
+            now = datetime.now(timezone.utc)
+            status["days_remaining"] = max(0, (self.challenge_end_date - now).days)
+        
+        return status
+    
+    def _auto_start_challenge(self):
+        """Auto-start challenge if not already active."""
+        if not self.risk_manager.state.live_flag:
+            log.info("Challenge not active - auto-starting Phase 1...")
+            self.risk_manager.start_challenge(phase=1)
+            if self.challenge_start_date is None:
+                self.start_new_challenge(duration_days=30)
+            log.info("Challenge auto-started! Trading is now enabled.")
+        else:
+            phase = self.risk_manager.state.phase
+            log.info(f"Challenge already active (Phase {phase}) - continuing...")
+    
+    def connect(self) -> bool:
+        """Connect to MT5."""
+        log.info("=" * 70)
+        log.info("CONNECTING TO MT5")
+        log.info("=" * 70)
+        
+        if not self.mt5.connect():
+            log.error("Failed to connect to MT5")
+            return False
+        
+        account = self.mt5.get_account_info()
+        log.info(f"Connected: {account.get('login')} @ {account.get('server')}")
+        log.info(f"Balance: ${account.get('balance', 0):,.2f}")
+        log.info(f"Equity: ${account.get('equity', 0):,.2f}")
+        log.info(f"Leverage: 1:{account.get('leverage', 0)}")
+        
+        # Discover available symbols
+        log.info("\n" + "=" * 70)
+        log.info("DISCOVERING BROKER SYMBOLS")
+        log.info("=" * 70)
+        
+        available_symbols = self.mt5.get_available_symbols()
+        log.info(f"Broker has {len(available_symbols)} total symbols")
+        
+        # Map our symbols to broker symbols
+        # TRADABLE_SYMBOLS uses OANDA format (EUR_USD), broker uses FTMO format (EURUSD)
+        mapped_count = 0
+        self.symbol_map = {}
+        
+        for our_symbol in TRADABLE_SYMBOLS:
+            # Convert OANDA format to FTMO format for matching
+            broker_symbol = self.mt5.find_symbol_match(our_symbol)
+            if broker_symbol:
+                self.symbol_map[our_symbol] = broker_symbol
+                mapped_count += 1
+                log.info(f"✓ {our_symbol:15s} (OANDA) -> {broker_symbol} (FTMO)")
+            else:
+                # Try manual conversion as fallback
+                ftmo_symbol = oanda_to_ftmo(our_symbol)
+                if self.mt5.get_symbol_info(ftmo_symbol):
+                    self.symbol_map[our_symbol] = ftmo_symbol
+                    mapped_count += 1
+                    log.info(f"✓ {our_symbol:15s} (OANDA) -> {ftmo_symbol} (FTMO fallback)")
+                else:
+                    log.warning(f"✗ {our_symbol:15s} -> NOT FOUND on broker")
+        
+        log.info("=" * 70)
+        log.info(f"Mapped {mapped_count}/{len(TRADABLE_SYMBOLS)} symbols")
+        log.info("=" * 70)
+        
+        if mapped_count == 0:
+            log.error("No symbols could be mapped! Check broker symbol naming.")
+            return False
+        
+        # Validate symbol mapping integrity
+        log.info("\n" + "=" * 70)
+        log.info("VALIDATING SYMBOL MAPPING")
+        log.info("=" * 70)
+        sample_symbols = list(self.symbol_map.items())[:5]
+        for oanda_sym, broker_sym in sample_symbols:
+            # Test that we can get symbol info
+            info = self.mt5.get_symbol_info(broker_sym)
+            if info:
+                log.info(f"✓ {oanda_sym} -> {broker_sym} (digits: {info.get('digits')}, spread: {info.get('spread')})")
+            else:
+                log.error(f"✗ {oanda_sym} -> {broker_sym} FAILED to get symbol info")
+        log.info("=" * 70)
+        
+        balance = account.get('balance', 0)
+        equity = account.get('equity', 0)
+        if balance > 0:
+            log.info("Syncing risk manager with MT5 account...")
+            self.risk_manager.sync_from_mt5(balance, equity)
+            log.info(f"Risk manager synced: Balance=${balance:,.2f}, Equity=${equity:,.2f}")
+            
+            if CHALLENGE_MODE:
+                from ftmo_config import FTMO_CONFIG
+                log.info("Initializing Challenge Risk Manager (FTMO 200K COMPLIANT)...")
+                config = ChallengeConfig(
+                    enabled=True,
+                    phase=self.risk_manager.state.phase,
+                    account_size=balance,
+                    max_risk_per_trade_pct=FTMO_CONFIG.risk_per_trade_pct,
+                    max_cumulative_risk_pct=FTMO_CONFIG.max_cumulative_risk_pct,
+                    max_concurrent_trades=FTMO_CONFIG.max_concurrent_trades,
+                    max_pending_orders=FTMO_CONFIG.max_pending_orders,
+                    tp1_close_pct=FTMO_CONFIG.tp1_close_pct,
+                    tp2_close_pct=FTMO_CONFIG.tp2_close_pct,
+                    tp3_close_pct=FTMO_CONFIG.tp3_close_pct,
+                    daily_loss_warning_pct=FTMO_CONFIG.daily_loss_warning_pct,
+                    daily_loss_reduce_pct=FTMO_CONFIG.daily_loss_reduce_pct,
+                    daily_loss_halt_pct=FTMO_CONFIG.daily_loss_halt_pct,
+                    total_dd_warning_pct=FTMO_CONFIG.total_dd_warning_pct,
+                    total_dd_emergency_pct=FTMO_CONFIG.total_dd_emergency_pct,
+                    protection_loop_interval_sec=FTMO_CONFIG.protection_loop_interval_sec,
+                    pending_order_max_age_hours=FTMO_CONFIG.pending_order_expiry_hours,
+                    profit_ultra_safe_threshold_pct=FTMO_CONFIG.profit_ultra_safe_threshold_pct,
+                    ultra_safe_risk_pct=FTMO_CONFIG.ultra_safe_risk_pct,
+                )
+                self.challenge_manager = ChallengeRiskManager(
+                    config=config,
+                    mt5_client=self.mt5,
+                    state_file="challenge_risk_state.json",
+                )
+                self.challenge_manager.sync_with_mt5(balance, equity)
+                log.info("Challenge Risk Manager initialized with ELITE PROTECTION")
+        
+        return True
+    
+    def disconnect(self):
+        """Disconnect from MT5."""
+        self.mt5.disconnect()
+        log.info("Disconnected from MT5")
+    
+    def get_candle_data(self, symbol: str) -> Dict[str, List[Dict]]:
+        """
+        Get multi-timeframe candle data for a symbol.
+        Same timeframes used in backtests for parity.
+        """
+        # Use broker symbol format
+        broker_symbol = self.symbol_map.get(symbol, symbol)
+        
+        data = {
+            "monthly": self.mt5.get_ohlcv(broker_symbol, "MN1", 24),
+            "weekly": self.mt5.get_ohlcv(broker_symbol, "W1", 104),
+            "daily": self.mt5.get_ohlcv(broker_symbol, "D1", 500),
+            "h4": self.mt5.get_ohlcv(broker_symbol, "H4", 500),
+        }
+        return data
+    
+    def check_existing_position(self, symbol: str) -> bool:
+        """Check if we already have a position on this symbol."""
+        # symbol is in OANDA format, convert to broker format for checking
+        broker_symbol = self.symbol_map.get(symbol, symbol)
+        positions = self.mt5.get_my_positions()
+        for pos in positions:
+            if pos.symbol == broker_symbol:
+                return True
+        return False
+    
+    def _calculate_atr(self, candles: List[Dict], period: int = 14) -> float:
+        """
+        Calculate Average True Range from candles.
+        
+        Args:
+            candles: List of candle dicts with 'high', 'low', 'close' keys
+            period: ATR period (default 14)
+            
+        Returns:
+            ATR value, or 0.0 if insufficient data
+        """
+        if len(candles) < period + 1:
+            return 0.0
+        
+        true_ranges = []
+        for i in range(1, len(candles)):
+            high = candles[i].get("high", 0)
+            low = candles[i].get("low", 0)
+            prev_close = candles[i-1].get("close", 0)
+            
+            tr = max(
+                high - low,
+                abs(high - prev_close),
+                abs(low - prev_close)
+            )
+            true_ranges.append(tr)
+        
+        if len(true_ranges) < period:
+            return 0.0
+        
+        return sum(true_ranges[-period:]) / period
+    
+    def scan_symbol(self, symbol: str) -> Optional[Dict]:
+        """
+        Scan a single symbol for trade setup.
+        
+        SYMBOL FORMAT:
+        - Input symbol: OANDA format (e.g., EUR_USD, XAU_USD, SPX500_USD)
+        - Broker symbol: FTMO MT5 format (e.g., EURUSD, XAUUSD, US500.cash)
+        - Data fetching: Uses broker symbol for MT5 candles
+        - Trading: Uses broker symbol for orders
+        
+        MATCHES BACKTEST LOGIC EXACTLY:
+        1. Get HTF trends (M/W/D)
+        2. Pick direction from bias
+        3. Compute confluence flags
+        4. Check for active setup
+        5. Validate entry is reachable from current price
+        6. Validate SL is appropriate
+        
+        Returns trade setup dict if signal is active AND tradeable, None otherwise.
+        """
+        from ftmo_config import FTMO_CONFIG, get_pip_size, get_sl_limits
+        
+        if symbol not in self.symbol_map:
+            log.debug(f"[{symbol}] Not available on this broker, skipping")
+            return None
+        
+        broker_symbol = self.symbol_map[symbol]
+        log.info(f"[{symbol}] Scanning (OANDA: {symbol}, FTMO: {broker_symbol})...")
+        
+        if self.check_existing_position(broker_symbol):
+            log.info(f"[{symbol}] Already in position, skipping")
+            return None
+        
+        if symbol in self.pending_setups:
+            existing = self.pending_setups[symbol]
+            if existing.status == "pending":
+                log.info(f"[{symbol}] Already have pending setup, skipping")
+                return None
+        
+        data = self.get_candle_data(symbol)
+        
+        if not data["daily"] or len(data["daily"]) < 50:
+            log.warning(f"[{symbol}] Insufficient daily data ({len(data.get('daily', []))} candles)")
+            return None
+        
+        if not data["weekly"] or len(data["weekly"]) < 10:
+            log.warning(f"[{symbol}] Insufficient weekly data")
+            return None
+        
+        monthly_candles = data["monthly"] if data["monthly"] else []
+        weekly_candles = data["weekly"]
+        daily_candles = data["daily"]
+        h4_candles = data["h4"] if data["h4"] else daily_candles[-20:]
+        
+        mn_trend = _infer_trend(monthly_candles) if monthly_candles else "mixed"
+        wk_trend = _infer_trend(weekly_candles) if weekly_candles else "mixed"
+        d_trend = _infer_trend(daily_candles) if daily_candles else "mixed"
+        
+        direction, _, _ = _pick_direction_from_bias(mn_trend, wk_trend, d_trend)
+        
+        flags, notes, trade_levels = compute_confluence(
+            monthly_candles,
+            weekly_candles,
+            daily_candles,
+            h4_candles,
+            direction,
+            self.params,
+        )
+        
+        entry, sl, tp1, tp2, tp3, tp4, tp5 = trade_levels
+        
+        confluence_score = sum(1 for v in flags.values() if v)
+        
+        has_confirmation = flags.get("confirmation", False)
+        has_rr = flags.get("rr", False)
+        has_location = flags.get("location", False)
+        has_fib = flags.get("fib", False)
+        has_liquidity = flags.get("liquidity", False)
+        has_structure = flags.get("structure", False)
+        has_htf_bias = flags.get("htf_bias", False)
+        
+        # EXACT same quality factor calculation as backtest_live_bot.py
+        quality_factors = sum([has_location, has_fib, has_liquidity, has_structure, has_htf_bias])
+        
+        # EXACT same active signal criteria as backtest_live_bot.py
+        if has_rr and confluence_score >= MIN_CONFLUENCE and quality_factors >= FTMO_CONFIG.min_quality_factors:
+            status = "active"
+        elif confluence_score >= MIN_CONFLUENCE:
+            status = "watching"
+        else:
+            status = "scan_only"
+        
+        log.info(f"[{symbol}] {direction.upper()} | Conf: {confluence_score}/7 | Quality: {quality_factors} | Status: {status}")
+        
+        for pillar, is_met in flags.items():
+            marker = "✓" if is_met else "✗"
+            note = notes.get(pillar, "")[:50]
+            log.debug(f"  [{marker}] {pillar}: {note}")
+        
+        if status != "active":
+            return None
+        
+        if entry is None or sl is None or tp1 is None:
+            log.warning(f"[{symbol}] Missing entry/SL/TP levels")
+            return None
+        
+        risk = abs(entry - sl)
+        if risk <= 0:
+            log.warning(f"[{symbol}] Invalid risk: entry={entry:.5f}, sl={sl:.5f}")
+            return None
+        
+        tick = self.mt5.get_tick(broker_symbol)
+        if tick is None:
+            log.warning(f"[{symbol}] Cannot get current tick price")
+            return None
+        
+        current_price = tick.bid if direction == "bullish" else tick.ask
+        
+        entry_distance = abs(current_price - entry)
+        entry_distance_r = entry_distance / risk
+        
+        if entry_distance_r > FTMO_CONFIG.max_entry_distance_r:
+            log.info(f"[{symbol}] Entry too far: {entry:.5f} is {entry_distance_r:.2f}R from current {current_price:.5f} (max: {FTMO_CONFIG.max_entry_distance_r}R)")
+            return None
+        
+        log.info(f"[{symbol}] Entry proximity OK: {entry_distance_r:.2f}R from current price")
+        
+        # SL validation with asset-specific limits
+        pip_size = get_pip_size(symbol)
+        sl_pips = abs(entry - sl) / pip_size
+        min_sl_pips, max_sl_pips = get_sl_limits(symbol)
+        
+        # Min SL check - adjust if needed
+        if sl_pips < min_sl_pips:
+            log.info(f"[{symbol}] SL too tight: {sl_pips:.1f} pips (min: {min_sl_pips})")
+            if direction == "bullish":
+                sl = entry - (min_sl_pips * pip_size)
+            else:
+                sl = entry + (min_sl_pips * pip_size)
+            risk = abs(entry - sl)
+            sl_pips = min_sl_pips
+            log.info(f"[{symbol}] SL adjusted to minimum: {sl:.5f} ({sl_pips:.1f} pips)")
+        
+        # ATR-based SL validation (same as backtest)
+        atr = self._calculate_atr(daily_candles, period=14)
+        if atr > 0:
+            sl_atr_ratio = abs(entry - sl) / atr
+            
+            if sl_atr_ratio < FTMO_CONFIG.min_sl_atr_ratio:
+                log.info(f"[{symbol}] SL too tight in ATR terms: {sl_atr_ratio:.2f} ATR (min: {FTMO_CONFIG.min_sl_atr_ratio})")
+                if direction == "bullish":
+                    sl = entry - (atr * FTMO_CONFIG.min_sl_atr_ratio)
+                else:
+                    sl = entry + (atr * FTMO_CONFIG.min_sl_atr_ratio)
+                risk = abs(entry - sl)
+                log.info(f"[{symbol}] SL adjusted to {FTMO_CONFIG.min_sl_atr_ratio} ATR: {sl:.5f}")
+            
+        # Calculate TPs using EXACT same R multiples as backtest (including TP4 and TP5)
+        risk = abs(entry - sl)
+        if direction == "bullish":
+            tp1 = entry + (risk * FTMO_CONFIG.tp1_r_multiple)
+            tp2 = entry + (risk * FTMO_CONFIG.tp2_r_multiple)
+            tp3 = entry + (risk * FTMO_CONFIG.tp3_r_multiple)
+            tp4 = entry + (risk * FTMO_CONFIG.tp4_r_multiple)
+            tp5 = entry + (risk * FTMO_CONFIG.tp5_r_multiple)
+        else:
+            tp1 = entry - (risk * FTMO_CONFIG.tp1_r_multiple)
+            tp2 = entry - (risk * FTMO_CONFIG.tp2_r_multiple)
+            tp3 = entry - (risk * FTMO_CONFIG.tp3_r_multiple)
+            tp4 = entry - (risk * FTMO_CONFIG.tp4_r_multiple)
+            tp5 = entry - (risk * FTMO_CONFIG.tp5_r_multiple)
+        
+        if direction == "bullish":
+            if current_price <= sl:
+                log.warning(f"[{symbol}] Current price {current_price:.5f} already below SL {sl:.5f} - skipping")
+                return None
+        else:
+            if current_price >= sl:
+                log.warning(f"[{symbol}] Current price {current_price:.5f} already above SL {sl:.5f} - skipping")
+                return None
+        
+        log.info(f"[{symbol}] ✓ ACTIVE SIGNAL VALIDATED!")
+        log.info(f"  Direction: {direction.upper()}")
+        log.info(f"  Confluence: {confluence_score}/7")
+        log.info(f"  Current Price: {current_price:.5f}")
+        log.info(f"  Entry: {entry:.5f} ({entry_distance_r:.2f}R away)")
+        log.info(f"  SL: {sl:.5f} ({sl_pips:.1f} pips)")
+        log.info(f"  TP1: {tp1:.5f} ({FTMO_CONFIG.tp1_r_multiple}R)")
+        log.info(f"  TP2: {tp2:.5f} ({FTMO_CONFIG.tp2_r_multiple}R)")
+        log.info(f"  TP3: {tp3:.5f} ({FTMO_CONFIG.tp3_r_multiple}R)")
+        log.info(f"  TP4: {tp4:.5f} ({FTMO_CONFIG.tp4_r_multiple}R)")
+        log.info(f"  TP5: {tp5:.5f} ({FTMO_CONFIG.tp5_r_multiple}R)")
+        
+        return {
+            "symbol": symbol,
+            "broker_symbol": broker_symbol,
+            "direction": direction,
+            "confluence": confluence_score,
+            "quality_factors": quality_factors,
+            "current_price": current_price,
+            "entry": entry,
+            "stop_loss": sl,
+            "tp1": tp1,
+            "tp2": tp2,
+            "tp3": tp3,
+            "tp4": tp4,
+            "tp5": tp5,
+            "entry_distance_r": entry_distance_r,
+            "sl_pips": sl_pips,
+            "flags": flags,
+            "notes": notes,
+        }
+    
+    def _calculate_pending_orders_risk(self) -> float:
+        """Calculate total risk from all pending setups."""
+        pending_list = []
+        for symbol, setup in self.pending_setups.items():
+            if setup.status == "pending" and setup.lot_size > 0:
+                pending_list.append({
+                    'symbol': symbol,
+                    'lot_size': setup.lot_size,
+                    'entry_price': setup.entry_price,
+                    'stop_loss': setup.stop_loss,
+                })
+        return self.risk_manager.calculate_pending_orders_risk(pending_list)
+    
+    def _try_replace_worst_pending(
+        self,
+        new_symbol: str,
+        new_confluence: int,
+        new_entry_distance_r: float,
+    ) -> bool:
+        """
+        Try to replace the worst pending order with a better one.
+        
+        Compares new setup quality vs existing pending orders.
+        Replaces if new setup is significantly better (closer entry OR higher confluence).
+        
+        Returns True if replacement was made, False otherwise.
+        """
+        pending_orders = [
+            (sym, setup) for sym, setup in self.pending_setups.items()
+            if setup.status == "pending"
+        ]
+        
+        if not pending_orders:
+            return False
+        
+        worst_symbol = None
+        worst_score = float('inf')
+        worst_setup = None
+        
+        for sym, setup in pending_orders:
+            entry_dist_r = getattr(setup, 'entry_distance_r', 1.0)
+            confluence = getattr(setup, 'confluence_score', 4)
+            score = confluence - entry_dist_r
+            
+            if score < worst_score:
+                worst_score = score
+                worst_symbol = sym
+                worst_setup = setup
+        
+        if worst_symbol is None:
+            return False
+        
+        new_score = new_confluence - new_entry_distance_r
+        
+        if new_score > worst_score + 0.5:
+            log.info(f"[{new_symbol}] Better setup found (score: {new_score:.2f}) - replacing {worst_symbol} (score: {worst_score:.2f})")
+            
+            if worst_setup and worst_setup.order_ticket:
+                try:
+                    self.mt5.cancel_pending_order(worst_setup.order_ticket)
+                    log.info(f"[{worst_symbol}] Cancelled pending order (ticket: {worst_setup.order_ticket})")
+                except Exception as e:
+                    log.warning(f"[{worst_symbol}] Failed to cancel order: {e}")
+            
+            del self.pending_setups[worst_symbol]
+            self._save_pending_setups()
+            return True
+        
+        log.info(f"[{new_symbol}] New setup (score: {new_score:.2f}) not better than worst pending (score: {worst_score:.2f})")
+        return False
+    
+    def place_setup_order(self, setup: Dict) -> bool:
+        """
+        Place order for a validated setup.
+        
+        FTMO 200K OPTIMIZED:
+        - Uses market order when price is at entry (like backtest instant fill)
+        - Uses pending order when price is near but not at entry
+        - Validates all risk limits before placing
+        - Calculates proper lot size for 200K account
+        """
+        from ftmo_config import FTMO_CONFIG, get_pip_size, get_sl_limits
+        
+        symbol = setup["symbol"]
+        broker_symbol = setup.get("broker_symbol", self.symbol_map.get(symbol, symbol))
+        direction = setup["direction"]
+        current_price = setup.get("current_price", 0)
+        entry = setup["entry"]
+        sl = setup["stop_loss"]
+        tp1 = setup["tp1"]
+        tp2 = setup.get("tp2")
+        tp3 = setup.get("tp3")
+        tp4 = setup.get("tp4")
+        tp5 = setup.get("tp5")
+        confluence = setup["confluence"]
+        quality_factors = setup["quality_factors"]
+        entry_distance_r = setup.get("entry_distance_r", 0)
+        
+        if symbol in self.pending_setups:
+            existing = self.pending_setups[symbol]
+            if existing.status == "pending":
+                log.info(f"[{symbol}] Already have pending setup at {existing.entry_price:.5f}, skipping")
+                return False
+        
+        if CHALLENGE_MODE and self.challenge_manager:
+            snapshot = self.challenge_manager.get_account_snapshot()
+            if snapshot is None:
+                log.error(f"[{symbol}] Cannot get account snapshot")
+                return False
+            
+            daily_loss_pct = abs(snapshot.daily_pnl_pct) if snapshot.daily_pnl_pct < 0 else 0
+            total_dd_pct = snapshot.total_drawdown_pct
+            profit_pct = (snapshot.equity - self.challenge_manager.initial_balance) / self.challenge_manager.initial_balance * 100
+            
+            if daily_loss_pct >= FTMO_CONFIG.daily_loss_halt_pct:
+                log.warning(f"[{symbol}] Trading halted: daily loss {daily_loss_pct:.1f}% >= {FTMO_CONFIG.daily_loss_halt_pct}%")
+                return False
+            
+            if total_dd_pct >= FTMO_CONFIG.total_dd_emergency_pct:
+                log.warning(f"[{symbol}] Trading halted: total DD {total_dd_pct:.1f}% >= {FTMO_CONFIG.total_dd_emergency_pct}%")
+                return False
+            
+            max_trades = FTMO_CONFIG.get_max_trades(profit_pct)
+            pending_count = len([s for s in self.pending_setups.values() if s.status == "pending"])
+            total_exposure = snapshot.open_positions + pending_count
+            
+            if snapshot.open_positions >= max_trades and entry_distance_r <= FTMO_CONFIG.immediate_entry_r:
+                log.info(f"[{symbol}] Max filled positions reached: {snapshot.open_positions}/{max_trades} - cannot place market order")
+                return False
+            
+            if total_exposure >= FTMO_CONFIG.max_pending_orders:
+                replaced = self._try_replace_worst_pending(
+                    new_symbol=symbol,
+                    new_confluence=setup.get("confluence_score", 0),
+                    new_entry_distance_r=entry_distance_r,
+                )
+                if not replaced:
+                    log.info(f"[{symbol}] Max total exposure reached: {total_exposure}/{FTMO_CONFIG.max_pending_orders} (positions: {snapshot.open_positions}, pending: {pending_count})")
+                    return False
+                pending_count = len([s for s in self.pending_setups.values() if s.status == "pending"])
+            
+            if snapshot.total_risk_pct >= FTMO_CONFIG.max_cumulative_risk_pct:
+                log.info(f"[{symbol}] Max cumulative risk reached: {snapshot.total_risk_pct:.1f}%/{FTMO_CONFIG.max_cumulative_risk_pct}%")
+                return False
+            
+            risk_pct = FTMO_CONFIG.get_risk_pct(daily_loss_pct, total_dd_pct)
+            
+            if risk_pct <= 0:
+                log.warning(f"[{symbol}] Risk percentage is 0 - trading halted")
+                return False
+            
+            from tradr.risk.position_sizing import calculate_lot_size
+            
+            symbol_info = self.mt5.get_symbol_info(broker_symbol)
+            max_lot = symbol_info.get('max_lot', 100.0) if symbol_info else 100.0
+            min_lot = symbol_info.get('min_lot', 0.01) if symbol_info else 0.01
+            
+            lot_result = calculate_lot_size(
+                symbol=broker_symbol,
+                account_balance=snapshot.balance,
+                risk_percent=risk_pct / 100,
+                entry_price=entry,
+                stop_loss_price=sl,
+                max_lot=max_lot,
+                min_lot=min_lot,
+            )
+            
+            if lot_result.get("error") or lot_result["lot_size"] <= 0:
+                log.warning(f"[{symbol}] Cannot calculate lot size: {lot_result.get('error', 'unknown error')}")
+                return False
+            
+            lot_size = lot_result["lot_size"]
+            risk_usd = lot_result["risk_usd"]
+            risk_pips = lot_result["stop_pips"]
+            
+            if symbol_info:
+                lot_step = symbol_info.get('lot_step', 0.01)
+                lot_size = max(min_lot, round(lot_size / lot_step) * lot_step)
+                lot_size = min(lot_size, max_lot)
+            
+            log.info(f"[{symbol}] Risk calculation:")
+            log.info(f"  Balance: ${snapshot.balance:.2f}")
+            log.info(f"  Risk %: {risk_pct:.2f}% (daily loss: {daily_loss_pct:.1f}%, DD: {total_dd_pct:.1f}%)")
+            log.info(f"  Risk $: ${risk_usd:.2f}")
+            log.info(f"  Stop pips: {risk_pips:.1f}")
+            log.info(f"  Lot size: {lot_size}")
+            
+            simulated_risk = snapshot.total_risk_usd + risk_usd
+            simulated_risk_pct = (simulated_risk / snapshot.balance) * 100
+            
+            if simulated_risk_pct > FTMO_CONFIG.max_cumulative_risk_pct:
+                available_risk = (FTMO_CONFIG.max_cumulative_risk_pct / 100 * snapshot.balance) - snapshot.total_risk_usd
+                if available_risk <= 0:
+                    log.warning(f"[{symbol}] No risk budget available")
+                    return False
+                
+                reduction = available_risk / risk_usd
+                lot_size = round(lot_size * reduction * 0.9, 2)
+                lot_size = max(0.01, lot_size)
+                log.info(f"[{symbol}] Lot reduced to {lot_size} to stay within cumulative risk limit")
+            
+            simulated_daily_loss = abs(snapshot.daily_pnl) + risk_usd if snapshot.daily_pnl < 0 else risk_usd
+            simulated_daily_loss_pct = (simulated_daily_loss / self.challenge_manager.day_start_balance) * 100
+            
+            if simulated_daily_loss_pct >= FTMO_CONFIG.max_daily_loss_pct:
+                log.warning(f"[{symbol}] Would breach daily loss: simulated {simulated_daily_loss_pct:.1f}% >= {FTMO_CONFIG.max_daily_loss_pct}%")
+                return False
+            
+        else:
+            risk_check = self.risk_manager.check_trade(
+                symbol=broker_symbol,
+                direction=direction,
+                entry_price=entry,
+                stop_loss_price=sl,
+            )
+            
+            if not risk_check.allowed:
+                log.warning(f"[{symbol}] Trade blocked by risk manager: {risk_check.reason}")
+                return False
+            
+            lot_size = risk_check.adjusted_lot
+        
+        if entry_distance_r <= FTMO_CONFIG.immediate_entry_r:
+            order_type = "MARKET"
+            log.info(f"[{symbol}] Price at entry ({entry_distance_r:.2f}R) - using MARKET ORDER")
+            
+            result = self.mt5.place_market_order(
+                symbol=broker_symbol,
+                direction=direction,
+                volume=lot_size,
+                sl=sl,
+                tp=0,  # No auto-TP - bot manages partial closes at TP1/TP2/TP3 manually
+            )
+            
+            if not result.success:
+                log.error(f"[{symbol}] Market order FAILED: {result.error}")
+                return False
+            
+            log.info(f"[{symbol}] MARKET ORDER FILLED!")
+            log.info(f"  Order Ticket: {result.order_id}")
+            log.info(f"  Fill Price: {result.price:.5f}")
+            log.info(f"  Volume: {result.volume}")
+            
+            self.risk_manager.record_trade_open(
+                symbol=broker_symbol,
+                direction=direction,
+                entry_price=result.price,
+                stop_loss=sl,
+                lot_size=result.volume,
+                order_id=result.order_id,
+            )
+            
+            pending_setup = PendingSetup(
+                symbol=symbol,
+                direction=direction,
+                entry_price=result.price,
+                stop_loss=sl,
+                tp1=tp1,
+                tp2=tp2,
+                tp3=tp3,
+                tp4=tp4,
+                tp5=tp5,
+                confluence=confluence,
+                confluence_score=confluence,
+                quality_factors=quality_factors,
+                entry_distance_r=entry_distance_r,
+                created_at=datetime.now(timezone.utc).isoformat(),
+                order_ticket=result.order_id,
+                status="filled",
+                lot_size=result.volume,
+            )
+            
+        else:
+            order_type = "PENDING"
+            log.info(f"[{symbol}] Price {entry_distance_r:.2f}R from entry - using PENDING ORDER")
+            log.info(f"[{symbol}] Placing PENDING ORDER:")
+            log.info(f"  Direction: {direction.upper()}")
+            log.info(f"  Entry Level: {entry:.5f}")
+            log.info(f"  SL: {sl:.5f}")
+            log.info(f"  TP1: {tp1:.5f}")
+            log.info(f"  TP5: {tp5:.5f}" if tp5 else "  TP5: N/A")
+            log.info(f"  Lot Size: {lot_size}")
+            log.info(f"  Expiration: {FTMO_CONFIG.pending_order_expiry_hours} hours")
+            
+            result = self.mt5.place_pending_order(
+                symbol=broker_symbol,
+                direction=direction,
+                volume=lot_size,
+                entry_price=entry,
+                sl=sl,
+                tp=0,  # No auto-TP - bot manages partial closes at TP1/TP2/TP3 manually
+                expiration_hours=int(FTMO_CONFIG.pending_order_expiry_hours),
+            )
+            
+            if not result.success:
+                log.error(f"[{symbol}] Pending order FAILED: {result.error}")
+                return False
+            
+            log.info(f"[{symbol}] PENDING ORDER PLACED SUCCESSFULLY!")
+            log.info(f"  Order Ticket: {result.order_id}")
+            log.info(f"  Entry Level: {result.price:.5f}")
+            log.info(f"  Volume: {result.volume}")
+            
+            pending_setup = PendingSetup(
+                symbol=symbol,
+                direction=direction,
+                entry_price=entry,
+                stop_loss=sl,
+                tp1=tp1,
+                tp2=tp2,
+                tp3=tp3,
+                tp4=tp4,
+                tp5=tp5,
+                confluence=confluence,
+                confluence_score=confluence,
+                quality_factors=quality_factors,
+                entry_distance_r=entry_distance_r,
+                created_at=datetime.now(timezone.utc).isoformat(),
+                order_ticket=result.order_id,
+                status="pending",
+                lot_size=lot_size,
+            )
+        
+        self.pending_setups[symbol] = pending_setup
+        self._save_pending_setups()
+        
+        if pending_setup.status == "filled":
+            self.record_trading_day()
+        
+        return True
+    
+    def check_position_updates(self):
+        """
+        Check for position closures (TP/SL hits) and update state.
+        
+        This syncs our internal state with actual MT5 positions.
+        """
+        my_positions = self.mt5.get_my_positions()
+        open_tickets = {p.ticket for p in my_positions}
+        
+        state_positions = self.risk_manager.state.open_positions.copy()
+        
+        for pos_dict in state_positions:
+            order_id = pos_dict.get("order_id")
+            if order_id is None:
+                continue
+            
+            if order_id not in open_tickets:
+                log.info(f"Position {order_id} closed (detected from MT5)")
+                
+                self.risk_manager.record_trade_close(
+                    order_id=order_id,
+                    exit_price=0.0,
+                    pnl_usd=0.0,
+                )
+    
+    def check_pending_orders(self):
+        """
+        Check status of pending orders every minute (like backtest simulation).
+        
+        - Detect if pending orders were filled (position exists)
+        - Detect if orders expired or were cancelled
+        - Cancel orders if price moved past SL (setup invalidated)
+        - Delete pending orders older than 24 hours (time-based expiry)
+        """
+        if not self.pending_setups:
+            return
+        
+        my_positions = self.mt5.get_my_positions()
+        position_symbols = {p.symbol for p in my_positions}
+        
+        my_pending_orders = self.mt5.get_my_pending_orders()
+        pending_order_tickets = {o.ticket for o in my_pending_orders}
+        
+        setups_to_remove = []
+        now = datetime.now(timezone.utc)
+        expiry_hours = FTMO_CONFIG.pending_order_expiry_hours
+        
+        for symbol, setup in self.pending_setups.items():
+            if setup.status != "pending":
+                continue
+            
+            if setup.created_at:
+                try:
+                    created_time = datetime.fromisoformat(setup.created_at.replace("Z", "+00:00"))
+                    age_hours = (now - created_time).total_seconds() / 3600
+                    
+                    if age_hours >= expiry_hours:
+                        log.info(f"[{symbol}] Pending order EXPIRED after {age_hours:.1f} hours (max {expiry_hours}h) - deleting")
+                        if setup.order_ticket:
+                            self.mt5.cancel_pending_order(setup.order_ticket)
+                        setup.status = "expired"
+                        setups_to_remove.append(symbol)
+                        continue
+                except (ValueError, TypeError) as e:
+                    log.warning(f"[{symbol}] Could not parse created_at: {setup.created_at} - {e}")
+            
+            broker_symbol = self.symbol_map.get(symbol, symbol)
+            if broker_symbol in position_symbols:
+                log.info(f"[{symbol}] Pending order FILLED! Position now open (broker: {broker_symbol})")
+                setup.status = "filled"
+                
+                self.risk_manager.record_trade_open(
+                    symbol=broker_symbol,
+                    direction=setup.direction,
+                    entry_price=setup.entry_price,
+                    stop_loss=setup.stop_loss,
+                    lot_size=setup.lot_size,
+                    order_id=setup.order_ticket or 0,
+                )
+                
+                self._save_pending_setups()
+                self.record_trading_day()
+                continue
+            
+            if setup.order_ticket and setup.order_ticket not in pending_order_tickets:
+                log.info(f"[{symbol}] Pending order EXPIRED or CANCELLED (ticket {setup.order_ticket})")
+                setup.status = "expired"
+                setups_to_remove.append(symbol)
+                continue
+            
+            tick = self.mt5.get_tick(broker_symbol)
+            if tick:
+                if setup.direction == "bullish" and tick.bid <= setup.stop_loss:
+                    log.warning(f"[{symbol}] Price ({tick.bid:.5f}) breached SL ({setup.stop_loss:.5f}) - cancelling pending order")
+                    if setup.order_ticket:
+                        self.mt5.cancel_pending_order(setup.order_ticket)
+                    setup.status = "cancelled"
+                    setups_to_remove.append(symbol)
+                elif setup.direction == "bearish" and tick.ask >= setup.stop_loss:
+                    log.warning(f"[{symbol}] Price ({tick.ask:.5f}) breached SL ({setup.stop_loss:.5f}) - cancelling pending order")
+                    if setup.order_ticket:
+                        self.mt5.cancel_pending_order(setup.order_ticket)
+                    setup.status = "cancelled"
+                    setups_to_remove.append(symbol)
+        
+        for symbol in setups_to_remove:
+            del self.pending_setups[symbol]
+        
+        if setups_to_remove:
+            self._save_pending_setups()
+    
+    def validate_setup(self, symbol: str) -> bool:
+        """
+        Re-validate a pending setup to check if it's still valid.
+        
+        Like the backtest, cancels if:
+        - Structure has shifted
+        - SL has been breached
+        - Confluence is no longer met
+        """
+        if symbol not in self.pending_setups:
+            return True
+        
+        setup = self.pending_setups[symbol]
+        if setup.status != "pending":
+            return True
+        
+        data = self.get_candle_data(symbol)
+        
+        if not data["daily"] or len(data["daily"]) < 30:
+            return True
+        
+        monthly_candles = data["monthly"] if data["monthly"] else []
+        weekly_candles = data["weekly"]
+        daily_candles = data["daily"]
+        h4_candles = data["h4"] if data["h4"] else daily_candles[-20:]
+        
+        mn_trend = _infer_trend(monthly_candles) if monthly_candles else "mixed"
+        wk_trend = _infer_trend(weekly_candles) if weekly_candles else "mixed"
+        d_trend = _infer_trend(daily_candles) if daily_candles else "mixed"
+        
+        direction, _, _ = _pick_direction_from_bias(mn_trend, wk_trend, d_trend)
+        
+        if direction != setup.direction:
+            log.warning(f"[{symbol}] Direction changed from {setup.direction} to {direction} - cancelling setup")
+            if setup.order_ticket:
+                self.mt5.cancel_pending_order(setup.order_ticket)
+            del self.pending_setups[symbol]
+            self._save_pending_setups()
+            return False
+        
+        flags, notes, trade_levels = compute_confluence(
+            monthly_candles,
+            weekly_candles,
+            daily_candles,
+            h4_candles,
+            direction,
+            self.params,
+        )
+        
+        confluence_score = sum(1 for v in flags.values() if v)
+        has_rr = flags.get("rr", False)
+        quality_factors = sum([
+            flags.get("location", False),
+            flags.get("fib", False),
+            flags.get("liquidity", False),
+            flags.get("structure", False),
+            flags.get("htf_bias", False)
+        ])
+        
+        if not (has_rr and confluence_score >= MIN_CONFLUENCE and quality_factors >= 1):
+            log.warning(f"[{symbol}] Setup no longer valid (conf: {confluence_score}/7, quality: {quality_factors}) - cancelling")
+            if setup.order_ticket:
+                self.mt5.cancel_pending_order(setup.order_ticket)
+            del self.pending_setups[symbol]
+            self._save_pending_setups()
+            return False
+        
+        return True
+    
+    def validate_all_setups(self):
+        """Validate all pending setups periodically."""
+        if not self.pending_setups:
+            return
+        
+        log.info(f"Validating {len(self.pending_setups)} pending setups...")
+        
+        symbols_to_validate = list(self.pending_setups.keys())
+        
+        for symbol in symbols_to_validate:
+            try:
+                self.validate_setup(symbol)
+                time.sleep(0.2)
+            except Exception as e:
+                log.error(f"[{symbol}] Error validating setup: {e}")
+        
+        self.last_validate_time = datetime.now(timezone.utc)
+    
+    def monitor_live_pnl(self) -> bool:
+        """
+        Monitor live P/L and trigger emergency close if needed.
+        
+        Strategy:
+        1. Check current daily loss and total drawdown
+        2. If approaching limits, close highest-risk positions first
+        3. Re-check after each close to avoid overshooting
+        4. Cancel pending orders if getting close to limits
+        
+        Returns:
+            True if emergency close was triggered, False otherwise
+        """
+        account = self.mt5.get_account_info()
+        if not account:
+            log.warning("Could not get account info for P/L monitoring")
+            return False
+        
+        current_equity = account.get('equity', 0)
+        current_balance = account.get('balance', 0)
+        
+        if current_equity <= 0:
+            return False
+        
+        # Calculate current exposure
+        day_start = self.risk_manager.state.day_start_balance
+        initial = self.risk_manager.state.initial_balance
+        
+        daily_loss_pct = 0.0
+        if current_equity < day_start:
+            daily_loss_pct = ((day_start - current_equity) / day_start) * 100
+        
+        total_dd_pct = 0.0
+        if current_equity < initial:
+            total_dd_pct = ((initial - current_equity) / initial) * 100
+        
+        # Cancel pending orders if approaching limits (above 3.5% daily or 7% total)
+        if daily_loss_pct >= 3.5 or total_dd_pct >= 7.0:
+            pending_orders = self.mt5.get_my_pending_orders()
+            if pending_orders:
+                log.warning(f"Approaching limits (Daily: {daily_loss_pct:.1f}%, DD: {total_dd_pct:.1f}%) - cancelling {len(pending_orders)} pending orders")
+                for order in pending_orders:
+                    self.mt5.cancel_pending_order(order.ticket)
+                self.pending_setups.clear()
+                self._save_pending_setups()
+        
+        # Start closing positions if above 4.0% daily or 8.0% total
+        if daily_loss_pct >= 4.0 or total_dd_pct >= 8.0:
+            positions = self.mt5.get_my_positions()
+            if not positions:
+                return False
+            
+            log.warning("=" * 70)
+            log.warning(f"PROTECTIVE CLOSE TRIGGERED!")
+            log.warning(f"Daily Loss: {daily_loss_pct:.2f}% | Total DD: {total_dd_pct:.2f}%")
+            log.warning(f"Closing positions gradually to stay under limits")
+            log.warning("=" * 70)
+            
+            # Sort positions by unrealized loss (worst first)
+            positions_sorted = sorted(positions, key=lambda p: p.profit)
+            
+            for pos in positions_sorted:
+                log.warning(f"Closing {pos.symbol} (P/L: ${pos.profit:.2f}, Volume: {pos.volume})")
+                result = self.mt5.close_position(pos.ticket)
+                
+                if result.success:
+                    log.info(f"  ✓ Closed at {result.price}, P/L: ${pos.profit:.2f}")
+                    self.risk_manager.record_trade_close(
+                        order_id=pos.ticket,
+                        exit_price=result.price,
+                        pnl_usd=pos.profit,
+                    )
+                    
+                    # Re-check after closing
+                    account = self.mt5.get_account_info()
+                    if account:
+                        new_equity = account.get('equity', 0)
+                        new_daily_loss = 0.0
+                        new_total_dd = 0.0
+                        
+                        if new_equity < day_start:
+                            new_daily_loss = ((day_start - new_equity) / day_start) * 100
+                        if new_equity < initial:
+                            new_total_dd = ((initial - new_equity) / initial) * 100
+                        
+                        log.info(f"  After close: Daily Loss: {new_daily_loss:.2f}%, Total DD: {new_total_dd:.2f}%")
+                        
+                        # Stop if we're back under 3.5% daily and 7% total
+                        if new_daily_loss < 3.5 and new_total_dd < 7.0:
+                            log.info("  Back under safe thresholds - stopping protective close")
+                            return False
+                        
+                        # Emergency if we've breached hard limits
+                        if new_daily_loss >= 5.0 or new_total_dd >= 10.0:
+                            log.error("  BREACH DETECTED - closing all remaining positions immediately!")
+                            break
+                else:
+                    log.error(f"  ✗ Failed to close: {result.error}")
+            
+            # Check final state
+            account = self.mt5.get_account_info()
+            if account:
+                final_equity = account.get('equity', 0)
+                final_daily = 0.0
+                final_dd = 0.0
+                
+                if final_equity < day_start:
+                    final_daily = ((day_start - final_equity) / day_start) * 100
+                if final_equity < initial:
+                    final_dd = ((initial - final_equity) / initial) * 100
+                
+                if final_daily >= 5.0 or final_dd >= 10.0:
+                    log.error(f"LIMIT BREACH AFTER CLOSE: Daily {final_daily:.2f}%, DD {final_dd:.2f}%")
+                    self.risk_manager.state.failed = True
+                    self.risk_manager.state.fail_reason = f"Limit breached: Daily {final_daily:.1f}%, DD {final_dd:.1f}%"
+                    self.risk_manager.save_state()
+                    return True
+            
+            return False
+        
+        return False
+    
+    def manage_partial_takes(self):
+        """
+        Manage partial take profits for active positions.
+        
+        Challenge Mode Strategy (FTMO Optimized):
+        - TP1 hit: Close 45% of position volume at +0.8-1R
+        - TP2 hit: Close 30% at +2R
+        - TP3 hit: Close remaining 25% at +3-4R or trailing
+        - Move SL to breakeven + buffer after TP1
+        
+        Standard Mode:
+        - TP1 hit: Close 33% of position volume
+        - TP2 hit: Close 50% of remaining
+        - TP3 hit: Close remainder
+        
+        Tracks partial close state in pending_setups.
+        """
+        positions = self.mt5.get_my_positions()
+        if not positions:
+            return
+        
+        for pos in positions:
+            symbol = pos.symbol
+            
+            if symbol not in self.pending_setups:
+                continue
+            
+            setup = self.pending_setups[symbol]
+            if setup.status != "filled":
+                continue
+            
+            tick = self.mt5.get_tick(symbol)
+            if not tick:
+                continue
+            
+            current_price = tick.bid if setup.direction == "bullish" else tick.ask
+            
+            tp1 = setup.tp1
+            tp2 = setup.tp2
+            tp3 = setup.tp3
+            
+            partial_state = getattr(setup, 'partial_closes', 0) if hasattr(setup, 'partial_closes') else 0
+            
+            tp1_hit = False
+            tp2_hit = False
+            tp3_hit = False
+            
+            if setup.direction == "bullish":
+                tp1_hit = current_price >= tp1 if tp1 else False
+                tp2_hit = current_price >= tp2 if tp2 else False
+                tp3_hit = current_price >= tp3 if tp3 else False
+            else:
+                tp1_hit = current_price <= tp1 if tp1 else False
+                tp2_hit = current_price <= tp2 if tp2 else False
+                tp3_hit = current_price <= tp3 if tp3 else False
+            
+            original_volume = setup.lot_size
+            current_volume = pos.volume
+            
+            # EXACT same partial close volumes as backtest_live_bot.py
+            if CHALLENGE_MODE and self.challenge_manager:
+                tp1_vol, tp2_vol, tp3_vol = self.challenge_manager.get_partial_close_volumes(original_volume)
+            else:
+                # Match backtest: 45% TP1, 30% TP2, 25% TP3
+                tp1_vol = round(original_volume * FTMO_CONFIG.tp1_close_pct, 2)
+                tp2_vol = round(original_volume * FTMO_CONFIG.tp2_close_pct, 2)
+                tp3_vol = round(original_volume * FTMO_CONFIG.tp3_close_pct, 2)
+            
+            tp1_vol = max(0.01, tp1_vol)
+            tp2_vol = max(0.01, tp2_vol)
+            tp3_vol = max(0.01, tp3_vol)
+            
+            if tp1_hit and partial_state == 0:
+                close_volume = min(tp1_vol, current_volume)
+                
+                if close_volume >= 0.01:
+                    pct_display = int((tp1_vol / original_volume) * 100) if original_volume > 0 else 0
+                    log.info(f"[{symbol}] TP1 HIT! Closing {pct_display}% ({close_volume} lots) of position")
+                    result = self.mt5.partial_close(pos.ticket, close_volume)
+                    if result.success:
+                        log.info(f"[{symbol}] Partial close successful at {result.price}")
+                        setup.partial_closes = 1
+                        self._save_pending_setups()
+                        
+                        be_buffer = abs(setup.entry_price - setup.stop_loss) * 0.1
+                        if setup.direction == "bullish":
+                            new_sl = setup.entry_price + be_buffer
+                        else:
+                            new_sl = setup.entry_price - be_buffer
+                        
+                        self.mt5.modify_sl_tp(pos.ticket, sl=new_sl, tp=tp2 if tp2 else tp1)
+                        log.info(f"[{symbol}] SL moved to BE+buffer ({new_sl:.5f}), TP updated to TP2: {tp2 if tp2 else 'N/A'}")
+                    else:
+                        log.error(f"[{symbol}] Partial close failed: {result.error}")
+            
+            elif tp2_hit and partial_state == 1:
+                remaining_volume = current_volume
+                close_volume = min(tp2_vol, remaining_volume)
+                if close_volume >= 0.01:
+                    pct_display = int((tp2_vol / original_volume) * 100) if original_volume > 0 else 0
+                    log.info(f"[{symbol}] TP2 HIT! Closing {pct_display}% ({close_volume} lots)")
+                    result = self.mt5.partial_close(pos.ticket, close_volume)
+                    if result.success:
+                        log.info(f"[{symbol}] Partial close successful at {result.price}")
+                        setup.partial_closes = 2
+                        self._save_pending_setups()
+                        
+                        if tp3:
+                            self.mt5.modify_sl_tp(pos.ticket, tp=tp3)
+                            log.info(f"[{symbol}] TP updated to TP3: {tp3}")
+                    else:
+                        log.error(f"[{symbol}] Partial close failed: {result.error}")
+            
+            elif tp3_hit and partial_state == 2:
+                log.info(f"[{symbol}] TP3 HIT! Closing remainder of position")
+                result = self.mt5.close_position(pos.ticket)
+                if result.success:
+                    log.info(f"[{symbol}] Position fully closed at {result.price}")
+                    setup.status = "closed"
+                    setup.partial_closes = 3
+                    self._save_pending_setups()
+                else:
+                    log.error(f"[{symbol}] Failed to close position: {result.error}")
+    
+    def execute_protection_actions(self) -> bool:
+        """
+        Execute protection actions from Challenge Risk Manager.
+        
+        Called every 30 seconds when CHALLENGE_MODE is enabled.
+        Executes actions returned by challenge_manager.run_protection_check():
+        - CLOSE_ALL: Close all positions and cancel pending orders
+        - CANCEL_PENDING: Cancel specific pending orders
+        - MOVE_SL_BREAKEVEN: Move SL to entry price for specific positions
+        - CLOSE_WORST: Close the worst performing position
+        
+        Returns:
+            True if an emergency action was triggered (halt trading), False otherwise
+        """
+        if not CHALLENGE_MODE or not self.challenge_manager:
+            return False
+        
+        actions = self.challenge_manager.run_protection_check()
+        
+        if not actions:
+            return False
+        
+        actions_sorted = sorted(actions, key=lambda a: a.priority, reverse=True)
+        emergency_triggered = False
+        
+        for action in actions_sorted:
+            log.warning(f"[RISK] Executing protection action: {action.action.value} - {action.reason}")
+            
+            try:
+                if action.action == ActionType.CLOSE_ALL:
+                    log.error("=" * 70)
+                    log.error("EMERGENCY: CLOSE ALL TRIGGERED")
+                    log.error(f"Reason: {action.reason}")
+                    log.error("=" * 70)
+                    
+                    positions = self.mt5.get_my_positions()
+                    for pos in positions:
+                        result = self.mt5.close_position(pos.ticket)
+                        if result.success:
+                            log.info(f"  ✓ Closed {pos.symbol} at {result.price}")
+                            self.risk_manager.record_trade_close(
+                                order_id=pos.ticket,
+                                exit_price=result.price,
+                                pnl_usd=pos.profit,
+                            )
+                        else:
+                            log.error(f"  ✗ Failed to close {pos.symbol}: {result.error}")
+                    
+                    pending_orders = self.mt5.get_my_pending_orders()
+                    for order in pending_orders:
+                        self.mt5.cancel_pending_order(order.ticket)
+                        log.info(f"  ✓ Cancelled pending order {order.ticket}")
+                    
+                    self.pending_setups.clear()
+                    self._save_pending_setups()
+                    
+                    action.executed = True
+                    emergency_triggered = True
+                    
+                elif action.action == ActionType.CANCEL_PENDING:
+                    for ticket in action.positions_affected:
+                        result = self.mt5.cancel_pending_order(ticket)
+                        if result:
+                            log.info(f"  ✓ Cancelled pending order {ticket}")
+                        else:
+                            log.error(f"  ✗ Failed to cancel pending order {ticket}")
+                    action.executed = True
+                    
+                elif action.action == ActionType.MOVE_SL_BREAKEVEN:
+                    for ticket in action.positions_affected:
+                        positions = self.mt5.get_my_positions()
+                        pos = next((p for p in positions if p.ticket == ticket), None)
+                        if pos:
+                            result = self.mt5.modify_sl_tp(ticket, sl=pos.price_open)
+                            if result:
+                                log.info(f"  ✓ Moved SL to breakeven for {pos.symbol} ({pos.price_open:.5f})")
+                            else:
+                                log.error(f"  ✗ Failed to move SL to breakeven for {pos.symbol}")
+                        else:
+                            log.warning(f"  Position {ticket} not found for SL modification")
+                    action.executed = True
+                    
+                elif action.action == ActionType.CLOSE_WORST:
+                    for ticket in action.positions_affected:
+                        result = self.mt5.close_position(ticket)
+                        if result.success:
+                            log.info(f"  ✓ Closed worst position {ticket} at {result.price}")
+                            self.risk_manager.record_trade_close(
+                                order_id=ticket,
+                                exit_price=result.price,
+                                pnl_usd=0.0,
+                            )
+                        else:
+                            log.error(f"  ✗ Failed to close position {ticket}: {result.error}")
+                    action.executed = True
+                    
+                elif action.action == ActionType.HALT_TRADING:
+                    log.error(f"[RISK] Trading HALTED: {action.reason}")
+                    action.executed = True
+                    emergency_triggered = True
+                    
+            except Exception as e:
+                log.error(f"[RISK] Error executing action {action.action.value}: {e}")
+        
+        return emergency_triggered
+    
+    def scan_all_symbols(self):
+        """
+        Scan all tradable symbols and place pending orders.
+        
+        Uses the same logic as the backtest walk-forward loop.
+        Now places pending limit orders instead of market orders
+        to match backtest entry behavior exactly.
+        """
+        log.info("=" * 70)
+        log.info(f"MARKET SCAN - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+        log.info(f"Strategy Mode: {SIGNAL_MODE} (Min Confluence: {MIN_CONFLUENCE}/7)")
+        log.info(f"Using PENDING ORDERS (like backtest)")
+        log.info("=" * 70)
+        
+        self.scan_count += 1
+        signals_found = 0
+        orders_placed = 0
+        
+        # Only scan symbols that are available on broker
+        available_symbols = [s for s in TRADABLE_SYMBOLS if s in self.symbol_map]
+        
+        for symbol in available_symbols:
+            try:
+                
+                setup = self.scan_symbol(symbol)
+                
+                if setup:
+                    signals_found += 1
+                    
+                    if self.place_setup_order(setup):
+                        orders_placed += 1
+                
+                time.sleep(0.5)
+                
+            except Exception as e:
+                log.error(f"[{symbol}] Error during scan: {e}")
+                continue
+            time.sleep(0.1)
+        
+        log.info("=" * 70)
+        log.info("SCAN COMPLETE")
+        log.info(f"  Symbols scanned: {len(available_symbols)}/{len(TRADABLE_SYMBOLS)}")
+        log.info(f"  Active signals: {signals_found}")
+        log.info(f"  Pending orders placed: {orders_placed}")
+        
+        positions = self.mt5.get_my_positions()
+        pending_orders = self.mt5.get_my_pending_orders()
+        log.info(f"  Open positions: {len(positions)}")
+        log.info(f"  Pending orders: {len(pending_orders)}")
+        log.info(f"  Tracked setups: {len(self.pending_setups)}")
+        
+        status = self.risk_manager.get_status()
+        log.info(f"  Challenge Phase: {status['phase']}")
+        log.info(f"  Balance: ${status['balance']:,.2f}")
+        log.info(f"  Profit: {status['profit_pct']:+.2f}% (Target: {status['target_pct']}%)")
+        log.info(f"  Daily DD: {status['daily_loss_pct']:.2f}%/5%")
+        log.info(f"  Max DD: {status['drawdown_pct']:.2f}%/10%")
+        log.info(f"  Profitable Days: {status['profitable_days']}/{status['min_profitable_days']}")
+        log.info("=" * 70)
+        
+        self.last_scan_time = datetime.now(timezone.utc)
+    
+    def run(self):
+        """
+        Main trading loop - runs 24/7.
+        
+        Schedule:
+        - Every 30 seconds: execute_protection_actions() (challenge mode) or monitor_live_pnl()
+        - Every 30 seconds: manage_partial_takes() for partial TP management
+        - Every minute: check_pending_orders() and check_position_updates()
+        - Every 15 min: validate_all_setups() to ensure pending orders are still valid
+        - Every 4 hours: scan_all_symbols() for new setups
+        
+        CHALLENGE MODE ELITE PROTECTION:
+        - Global Risk Controller: Real-time P/L tracking every 30s via execute_protection_actions()
+        - Smart Position Sizing: 0.75% risk per trade, adaptive to DD
+        - Concurrent Trade Limit: Max 5 positions, auto-cancel excess pending
+        - Partial Takes: 45% TP1, 30% TP2, 25% TP3 with BE+buffer (via get_partial_close_volumes)
+        - Emergency Close: 4.5% daily loss or 8% total DD triggers halt
+        - Risk Modes: Aggressive/Normal/Conservative/Ultra-Safe based on DD
+        - Action Types: CLOSE_ALL, CANCEL_PENDING, MOVE_SL_BREAKEVEN, CLOSE_WORST, HALT_TRADING
+        """
+        log.info("=" * 70)
+        log.info("TRADR BOT - LIVE TRADING (FTMO COMPLIANT)")
+        if CHALLENGE_MODE:
+            log.info("*** CHALLENGE MODE: ELITE PROTECTION ENABLED ***")
+        log.info("=" * 70)
+        log.info(f"Using SAME strategy as backtests (strategy_core.py)")
+        log.info(f"FTMO Risk Limits:")
+        log.info(f"  - Max single trade risk: 0.75% (Challenge Mode)")
+        log.info(f"  - Max cumulative risk: {FTMO_CONFIG.max_cumulative_risk_pct}%")
+        log.info(f"  - Emergency close at: 4.5% daily loss / 8% drawdown")
+        log.info(f"  - Partial TPs: 45% TP1, 30% TP2, 25% TP3 (Challenge Mode)")
+        log.info(f"Server: {MT5_SERVER}")
+        log.info(f"Login: {MT5_LOGIN}")
+        log.info(f"Scan Interval: {SCAN_INTERVAL_HOURS} hours")
+        log.info(f"Validate Interval: {self.VALIDATE_INTERVAL_MINUTES} minutes")
+        log.info(f"P/L Monitor Interval: {self.MAIN_LOOP_INTERVAL_SECONDS} seconds (elite protection)")
+        log.info(f"Strategy Mode: {SIGNAL_MODE}")
+        log.info(f"Min Confluence: {MIN_CONFLUENCE}/7")
+        log.info(f"Symbols: {len(TRADABLE_SYMBOLS)}")
+        log.info("=" * 70)
+        
+        if not self.connect():
+            log.error("Failed to connect to MT5. Exiting.")
+            return
+        
+        log.info("Starting trading loop...")
+        log.info("Press Ctrl+C to stop")
+        
+        global running
+        
+        self.scan_all_symbols()
+        self.last_validate_time = datetime.now(timezone.utc)
+        last_protection_check = datetime.now(timezone.utc)
+        emergency_triggered = False
+        
+        while running:
+            try:
+                now = datetime.now(timezone.utc)
+                
+                if CHALLENGE_MODE and self.challenge_manager and self.challenge_manager.halted:
+                    if not emergency_triggered:
+                        emergency_triggered = True
+                        log.error(f"Challenge Manager halted trading: {self.challenge_manager.halt_reason}")
+                
+                if not emergency_triggered:
+                    time_since_protection_check = (now - last_protection_check).total_seconds()
+                    if time_since_protection_check >= self.MAIN_LOOP_INTERVAL_SECONDS:
+                        if CHALLENGE_MODE and self.challenge_manager:
+                            if self.execute_protection_actions():
+                                emergency_triggered = True
+                                log.error("Challenge protection triggered emergency - halting all trading")
+                                continue
+                        else:
+                            if self.monitor_live_pnl():
+                                emergency_triggered = True
+                                log.error("Emergency close triggered - halting all trading")
+                                continue
+                        
+                        self.manage_partial_takes()
+                        last_protection_check = now
+                
+                if emergency_triggered:
+                    time.sleep(60)
+                    continue
+                
+                self.check_pending_orders()
+                self.check_position_updates()
+                
+                if self.last_validate_time:
+                    next_validate = self.last_validate_time + timedelta(minutes=self.VALIDATE_INTERVAL_MINUTES)
+                    if now >= next_validate:
+                        self.validate_all_setups()
+                
+                if self.last_scan_time:
+                    next_scan = self.last_scan_time + timedelta(hours=SCAN_INTERVAL_HOURS)
+                    if now >= next_scan:
+                        self.scan_all_symbols()
+                
+                if not self.mt5.connected:
+                    log.warning("MT5 connection lost, attempting reconnect...")
+                    if self.connect():
+                        log.info("Reconnected successfully")
+                    else:
+                        log.error("Reconnect failed, waiting 60s...")
+                        time.sleep(60)
+                        continue
+                
+                time.sleep(self.MAIN_LOOP_INTERVAL_SECONDS)
+                
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                log.error(f"Error in main loop: {e}")
+                import traceback
+                log.error(traceback.format_exc())
+                time.sleep(60)
+        
+        log.info("Shutting down...")
+        
+        self._save_pending_setups()
+        self.disconnect()
+        log.info("Bot stopped")
+
+
+def main():
+    """Entry point."""
+    Path("logs").mkdir(exist_ok=True)
+    
+    if not MT5_LOGIN or not MT5_PASSWORD:
+        print("=" * 70)
+        print("TRADR BOT - CONFIGURATION REQUIRED")
+        print("=" * 70)
+        print("")
+        print("ERROR: MT5 credentials not configured!")
+        print("")
+        print("Create a .env file with:")
+        print("  MT5_SERVER=YourBrokerServer")
+        print("  MT5_LOGIN=12345678")
+        print("  MT5_PASSWORD=YourPassword")
+        print("")
+        print("Optional Discord monitoring:")
+        print("  DISCORD_BOT_TOKEN=your_token")
+        print("")
+        sys.exit(1)
+    
+    bot = LiveTradingBot()
+    bot.run()
+
+
+if __name__ == "__main__":
+    main()
