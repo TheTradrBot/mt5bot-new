@@ -34,3 +34,8 @@ numpy
 pandas
 python-dotenv
 requests
+discord.py
+flask
+numpy
+pandas
+requests
