@@ -13,7 +13,7 @@ from config import FOREX_PAIRS, METALS, INDICES, CRYPTO_ASSETS
 OHLCV_DIR = Path("data/ohlcv")
 OHLCV_DIR.mkdir(parents=True, exist_ok=True)
 
-TIMEFRAMES = ["H4", "D1", "W1"]
+TIMEFRAMES = ["H4", "D1", "W1", "MN"]
 START_DATE = datetime(2023, 1, 1, tzinfo=timezone.utc)
 END_DATE = datetime(2024, 12, 31, tzinfo=timezone.utc)
 
