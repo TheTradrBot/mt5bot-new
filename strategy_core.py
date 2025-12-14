@@ -1065,6 +1065,61 @@ def generate_signals(
     return signals
 
 
+def _validate_and_find_entry(
+    candles: List[Dict],
+    signal_bar: int,
+    theoretical_entry: float,
+    direction: str,
+    max_wait_bars: int = 5,
+) -> Tuple[Optional[int], float, bool]:
+    """
+    Validate entry price against actual candle data and find real entry point.
+    
+    For limit orders (golden pocket entries), we need to wait for price to 
+    actually reach our entry level. This prevents look-ahead bias.
+    
+    IMPORTANT: Limit order fill logic:
+    - Bullish limit order: Placed BELOW current price, fills when price drops TO or THROUGH it
+      -> Entry is valid if theoretical_entry >= candle_low (price reached down to our level)
+    - Bearish limit order: Placed ABOVE current price, fills when price rises TO or THROUGH it
+      -> Entry is valid if theoretical_entry <= candle_high (price reached up to our level)
+    
+    If price never reaches the entry level, the trade is SKIPPED (not adjusted).
+    
+    Args:
+        candles: OHLCV candles
+        signal_bar: Bar index where signal was generated
+        theoretical_entry: Calculated entry price from strategy
+        direction: 'bullish' or 'bearish'
+        max_wait_bars: Maximum bars to wait for entry (default 5)
+    
+    Returns:
+        Tuple of (actual_entry_bar, actual_entry_price, was_adjusted)
+        Returns (None, 0, False) if entry never achieved
+    """
+    for bar_offset in range(max_wait_bars + 1):
+        check_bar = signal_bar + bar_offset
+        if check_bar >= len(candles):
+            break
+            
+        candle = candles[check_bar]
+        high = candle["high"]
+        low = candle["low"]
+        
+        if direction == "bullish":
+            if low <= theoretical_entry <= high:
+                return check_bar, theoretical_entry, False
+            elif theoretical_entry > high:
+                pass
+        else:
+            if low <= theoretical_entry <= high:
+                return check_bar, theoretical_entry, False
+            elif theoretical_entry < low:
+                pass
+    
+    return None, 0.0, False
+
+
 def simulate_trades(
     candles: List[Dict],
     symbol: str = "UNKNOWN",
@@ -1078,6 +1133,10 @@ def simulate_trades(
     
     This is a walk-forward simulation with no look-ahead bias.
     Uses the same logic as live trading but runs through historical data.
+    
+    IMPORTANT: Entry prices are now validated against actual candle data.
+    If the theoretical entry price is not available on the signal bar,
+    we wait up to 5 bars for price to reach the entry level.
     
     Args:
         candles: Daily OHLCV candles (oldest to newest)
@@ -1114,15 +1173,24 @@ def simulate_trades(
         if open_trade is not None:
             continue
         
-        entry_bar = signal.bar_index
-        entry_price = signal.entry
+        theoretical_entry = signal.entry
+        direction = signal.direction
+        
+        actual_entry_bar, actual_entry_price, _ = _validate_and_find_entry(
+            candles, signal.bar_index, theoretical_entry, direction, max_wait_bars=5
+        )
+        
+        if actual_entry_bar is None:
+            continue
+        
+        entry_bar = actual_entry_bar
+        entry_price = actual_entry_price
         sl = signal.stop_loss
         tp1 = signal.tp1
         tp2 = signal.tp2
         tp3 = signal.tp3
         tp4 = signal.tp4
         tp5 = signal.tp5
-        direction = signal.direction
         
         risk = abs(entry_price - sl)
         if risk <= 0:
@@ -1136,7 +1204,7 @@ def simulate_trades(
         TP5_CLOSE_PCT = params.tp5_close_pct  # 45%
         
         # Pre-calculate individual R-multiples for each TP level
-        tp1_rr = (tp1 - entry_price) / risk if direction == "bullish" else (entry_price - tp1) / risk
+        tp1_rr = (tp1 - entry_price) / risk if tp1 and direction == "bullish" else ((entry_price - tp1) / risk if tp1 else 0)
         tp2_rr = (tp2 - entry_price) / risk if tp2 and direction == "bullish" else ((entry_price - tp2) / risk if tp2 else 0)
         tp3_rr = (tp3 - entry_price) / risk if tp3 and direction == "bullish" else ((entry_price - tp3) / risk if tp3 else 0)
         tp4_rr = (tp4 - entry_price) / risk if tp4 and direction == "bullish" else ((entry_price - tp4) / risk if tp4 else 0)
@@ -1293,7 +1361,8 @@ def simulate_trades(
                     trade_closed = True
             
             if trade_closed:
-                entry_timestamp = signal.timestamp
+                entry_candle = candles[entry_bar]
+                entry_timestamp = entry_candle.get("time") or entry_candle.get("timestamp") or entry_candle.get("date")
                 
                 trade = Trade(
                     symbol=symbol,
