@@ -2072,7 +2072,7 @@ class OptunaOptimizer:
             except:
                 pass
         
-        score = avg_quarterly_R + min_quarterly_R_bonus - negative_quarter_penalty + validation_R * 0.5 + monte_carlo_stability
+        score = avg_quarterly_R + min_quarterly_R_bonus - negative_quarter_penalty + validation_R + monte_carlo_stability
         
         for trade in trades:
             r_value = getattr(trade, 'rr', getattr(trade, 'r_multiple', 0))

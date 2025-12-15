@@ -2519,39 +2519,6 @@ def extract_ml_features(
     return features
 
 
-def _calculate_rsi(candles: List[Dict], period: int = 14) -> float:
-    """Calculate RSI value."""
-    if len(candles) < period + 1:
-        return 50.0
-    
-    closes = [c.get("close", 0) for c in candles[-(period + 1):]]
-    gains = []
-    losses = []
-    
-    for i in range(1, len(closes)):
-        change = closes[i] - closes[i - 1]
-        if change > 0:
-            gains.append(change)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(abs(change))
-    
-    if not gains or not losses:
-        return 50.0
-    
-    avg_gain = sum(gains) / len(gains)
-    avg_loss = sum(losses) / len(losses)
-    
-    if avg_loss == 0:
-        return 100.0
-    
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    
-    return rsi
-
-
 def apply_ml_filter(
     features: Dict[str, float],
     min_prob: float = 0.6,
