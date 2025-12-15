@@ -1,5 +1,7 @@
 # FTMO 200K Trading Bot
 
+> **For a comprehensive understanding of this project, start with `PROJECT_OVERVIEW.md`**
+
 ## Overview
 This project is a **MetaTrader 5 FTMO 200K Trading Bot** with an integrated **optimization system**. The project contains two main components:
 
