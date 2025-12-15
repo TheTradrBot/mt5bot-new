@@ -58,6 +58,15 @@ The bot employs a "7 Confluence Pillars" strategy:
 
 Trades execute only when >= 5 pillars align with valid R:R ratio.
 
+### Blueprint V2 Enhancements (December 2025)
+- **Proper Fib Anchoring**: Body-to-body anchors (red close → green open for bullish N, opposite for bearish V)
+- **Mitigated S/R Zones**: Broken-then-retested levels with 1-2% proximity filter
+- **Structural Frameworks**: Ascending/descending channel detection on Daily
+- **Displacement Filter**: Strong BOS/CHoCH candles beyond structure (1.5x ATR minimum)
+- **Candle Rejection**: Pinbar/engulfing patterns at S/R zones
+- **RSI Divergence**: Bullish/bearish divergence detection
+- **Bollinger Mean Reversion**: Band touch confluence signals
+
 ## Risk Management
 - Accurate symbol-specific position sizing (all 34 assets safe)
 - Dynamic risk per trade (0.5-1.0%)
