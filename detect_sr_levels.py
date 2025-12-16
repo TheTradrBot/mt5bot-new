@@ -42,40 +42,40 @@ ALL_ASSETS = [
 ]
 
 ASSET_CONFIG = {
-    "EURUSD": {"tolerance": 0.0050, "decimals": 5},
-    "GBPUSD": {"tolerance": 0.0050, "decimals": 5},
-    "USDJPY": {"tolerance": 0.50, "decimals": 3},
-    "USDCHF": {"tolerance": 0.0050, "decimals": 5},
-    "USDCAD": {"tolerance": 0.0050, "decimals": 5},
-    "AUDUSD": {"tolerance": 0.0050, "decimals": 5},
-    "NZDUSD": {"tolerance": 0.0050, "decimals": 5},
-    "EURGBP": {"tolerance": 0.0050, "decimals": 5},
-    "EURJPY": {"tolerance": 0.50, "decimals": 3},
-    "EURCHF": {"tolerance": 0.0050, "decimals": 5},
-    "EURAUD": {"tolerance": 0.0050, "decimals": 5},
-    "EURCAD": {"tolerance": 0.0050, "decimals": 5},
-    "EURNZD": {"tolerance": 0.0050, "decimals": 5},
-    "GBPJPY": {"tolerance": 0.50, "decimals": 3},
-    "GBPCHF": {"tolerance": 0.0050, "decimals": 5},
-    "GBPAUD": {"tolerance": 0.0050, "decimals": 5},
-    "GBPCAD": {"tolerance": 0.0050, "decimals": 5},
-    "GBPNZD": {"tolerance": 0.0050, "decimals": 5},
-    "AUDJPY": {"tolerance": 0.50, "decimals": 3},
-    "AUDCHF": {"tolerance": 0.0050, "decimals": 5},
-    "AUDCAD": {"tolerance": 0.0050, "decimals": 5},
-    "AUDNZD": {"tolerance": 0.0050, "decimals": 5},
-    "NZDJPY": {"tolerance": 0.50, "decimals": 3},
-    "NZDCHF": {"tolerance": 0.0050, "decimals": 5},
-    "NZDCAD": {"tolerance": 0.0050, "decimals": 5},
-    "CADJPY": {"tolerance": 0.50, "decimals": 3},
-    "CADCHF": {"tolerance": 0.0050, "decimals": 5},
-    "CHFJPY": {"tolerance": 0.50, "decimals": 3},
-    "XAUUSD": {"tolerance": 10.0, "decimals": 2},
-    "XAGUSD": {"tolerance": 0.25, "decimals": 3},
-    "BTCUSD": {"tolerance": 1000.0, "decimals": 0},
-    "ETHUSD": {"tolerance": 50.0, "decimals": 2},
-    "SPX500USD": {"tolerance": 50.0, "decimals": 1},
-    "NAS100USD": {"tolerance": 100.0, "decimals": 1},
+    "EURUSD": {"tolerance": 0.0008, "decimals": 5},
+    "GBPUSD": {"tolerance": 0.0010, "decimals": 5},
+    "USDJPY": {"tolerance": 0.08, "decimals": 3},
+    "USDCHF": {"tolerance": 0.0008, "decimals": 5},
+    "USDCAD": {"tolerance": 0.0008, "decimals": 5},
+    "AUDUSD": {"tolerance": 0.0006, "decimals": 5},
+    "NZDUSD": {"tolerance": 0.0006, "decimals": 5},
+    "EURGBP": {"tolerance": 0.0006, "decimals": 5},
+    "EURJPY": {"tolerance": 0.10, "decimals": 3},
+    "EURCHF": {"tolerance": 0.0008, "decimals": 5},
+    "EURAUD": {"tolerance": 0.0012, "decimals": 5},
+    "EURCAD": {"tolerance": 0.0010, "decimals": 5},
+    "EURNZD": {"tolerance": 0.0012, "decimals": 5},
+    "GBPJPY": {"tolerance": 0.12, "decimals": 3},
+    "GBPCHF": {"tolerance": 0.0010, "decimals": 5},
+    "GBPAUD": {"tolerance": 0.0015, "decimals": 5},
+    "GBPCAD": {"tolerance": 0.0012, "decimals": 5},
+    "GBPNZD": {"tolerance": 0.0015, "decimals": 5},
+    "AUDJPY": {"tolerance": 0.08, "decimals": 3},
+    "AUDCHF": {"tolerance": 0.0006, "decimals": 5},
+    "AUDCAD": {"tolerance": 0.0008, "decimals": 5},
+    "AUDNZD": {"tolerance": 0.0008, "decimals": 5},
+    "NZDJPY": {"tolerance": 0.08, "decimals": 3},
+    "NZDCHF": {"tolerance": 0.0006, "decimals": 5},
+    "NZDCAD": {"tolerance": 0.0006, "decimals": 5},
+    "CADJPY": {"tolerance": 0.08, "decimals": 3},
+    "CADCHF": {"tolerance": 0.0006, "decimals": 5},
+    "CHFJPY": {"tolerance": 0.10, "decimals": 3},
+    "XAUUSD": {"tolerance": 5.0, "decimals": 2},
+    "XAGUSD": {"tolerance": 0.10, "decimals": 3},
+    "BTCUSD": {"tolerance": 500.0, "decimals": 0},
+    "ETHUSD": {"tolerance": 25.0, "decimals": 2},
+    "SPX500USD": {"tolerance": 25.0, "decimals": 1},
+    "NAS100USD": {"tolerance": 50.0, "decimals": 1},
 }
 
 
@@ -215,6 +215,9 @@ def count_touches_with_reversal(
     - For support: Low comes within tolerance of level AND price moves up afterward
     - For resistance: High comes within tolerance of level AND price moves down afterward
     
+    Each candle can only contribute ONE touch (either support OR resistance, not both).
+    Priority given to the touch type with stronger reversal.
+    
     Args:
         df: OHLCV DataFrame
         level: The S/R level to check
@@ -227,25 +230,27 @@ def count_touches_with_reversal(
     touches = []
     highs = df['High'].values
     lows = df['Low'].values
-    closes = df['Close'].values
     times = df.index.tolist()
     
     atr = np.mean(highs - lows) if len(df) > 0 else tolerance * 2
     min_reversal = max(tolerance, atr * min_reversal_factor)
     
     for i in range(len(df) - 1):
+        support_touch = None
+        resistance_touch = None
+        
         if abs(lows[i] - level) <= tolerance:
             future_move = 0
             for j in range(i + 1, min(i + 4, len(df))):
                 future_move = max(future_move, highs[j] - lows[i])
             
             if future_move >= min_reversal:
-                touches.append({
+                support_touch = {
                     "timestamp": str(times[i]),
                     "type": "support",
                     "touch_price": float(lows[i]),
                     "reversal_size": float(future_move)
-                })
+                }
         
         if abs(highs[i] - level) <= tolerance:
             future_move = 0
@@ -253,12 +258,22 @@ def count_touches_with_reversal(
                 future_move = max(future_move, highs[i] - lows[j])
             
             if future_move >= min_reversal:
-                touches.append({
+                resistance_touch = {
                     "timestamp": str(times[i]),
                     "type": "resistance",
                     "touch_price": float(highs[i]),
                     "reversal_size": float(future_move)
-                })
+                }
+        
+        if support_touch and resistance_touch:
+            if support_touch["reversal_size"] >= resistance_touch["reversal_size"]:
+                touches.append(support_touch)
+            else:
+                touches.append(resistance_touch)
+        elif support_touch:
+            touches.append(support_touch)
+        elif resistance_touch:
+            touches.append(resistance_touch)
     
     return touches
 
