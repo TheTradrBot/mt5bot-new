@@ -28,8 +28,8 @@ ASSETS = [
     "SPX500_USD", "NAS100_USD",
 ]
 
-TIMEFRAMES = ["D", "H4", "W", "M"]
-TF_MAP = {"D": "D1", "H4": "H4", "W": "W1", "M": "MN"}
+TIMEFRAMES = ["D", "H4", "W"]  # Removed M (monthly) - OANDA API often hangs/fails on monthly
+TF_MAP = {"D": "D1", "H4": "H4", "W": "W1"}
 
 def main():
     print("=" * 70)
@@ -37,7 +37,7 @@ def main():
     print("=" * 70)
     print(f"Assets: {len(ASSETS)}")
     print(f"Date range: 2023-01-01 to 2025-12-16")
-    print(f"Timeframes: D1, H4, W1, MN")
+    print(f"Timeframes: D1, H4, W1 (Monthly excluded - OANDA API unreliable)")
     print(f"Skipping already downloaded files")
     print("=" * 70)
 
