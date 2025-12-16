@@ -43,6 +43,14 @@ from strategy_core import (
     _pick_direction_from_bias,
 )
 
+try:
+    from historical_sr import get_all_htf_sr_levels
+    HISTORICAL_SR_AVAILABLE = True
+except ImportError:
+    HISTORICAL_SR_AVAILABLE = False
+    def get_all_htf_sr_levels(symbol):
+        return {'monthly': [], 'weekly': []}
+
 from tradr.mt5.client import MT5Client, PendingOrder
 from tradr.risk.manager import RiskManager
 from tradr.utils.logger import setup_logger
@@ -527,6 +535,8 @@ class LiveTradingBot:
         
         direction, _, _ = _pick_direction_from_bias(mn_trend, wk_trend, d_trend)
         
+        historical_sr = get_all_htf_sr_levels(symbol) if HISTORICAL_SR_AVAILABLE else None
+        
         flags, notes, trade_levels = compute_confluence(
             monthly_candles,
             weekly_candles,
@@ -534,6 +544,7 @@ class LiveTradingBot:
             h4_candles,
             direction,
             self.params,
+            historical_sr,
         )
         
         entry, sl, tp1, tp2, tp3, tp4, tp5 = trade_levels
@@ -1193,6 +1204,8 @@ class LiveTradingBot:
             self._save_pending_setups()
             return False
         
+        historical_sr = get_all_htf_sr_levels(symbol) if HISTORICAL_SR_AVAILABLE else None
+        
         flags, notes, trade_levels = compute_confluence(
             monthly_candles,
             weekly_candles,
@@ -1200,6 +1213,7 @@ class LiveTradingBot:
             h4_candles,
             direction,
             self.params,
+            historical_sr,
         )
         
         confluence_score = sum(1 for v in flags.values() if v)

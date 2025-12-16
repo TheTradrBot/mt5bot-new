@@ -1,0 +1,359 @@
+[
+  {
+    "level": 1.12217,
+    "touches": 16,
+    "first_touch": "2003-04-30 00:00:00",
+    "last_touch": "2021-12-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.1092,
+    "touches": 14,
+    "first_touch": "2015-01-31 00:00:00",
+    "last_touch": "2022-02-28 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.07791,
+    "touches": 11,
+    "first_touch": "2020-02-29 00:00:00",
+    "last_touch": "2022-06-30 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.08139,
+    "touches": 10,
+    "first_touch": "2003-09-30 00:00:00",
+    "last_touch": "2022-03-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.05292,
+    "touches": 9,
+    "first_touch": "2003-03-31 00:00:00",
+    "last_touch": "2023-02-28 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.09054,
+    "touches": 8,
+    "first_touch": "2015-06-30 00:00:00",
+    "last_touch": "2019-10-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.18148,
+    "touches": 7,
+    "first_touch": "2003-10-31 00:00:00",
+    "last_touch": "2006-01-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.28678,
+    "touches": 7,
+    "first_touch": "2005-03-31 00:00:00",
+    "last_touch": "2006-09-30 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.10558,
+    "touches": 6,
+    "first_touch": "2003-03-31 00:00:00",
+    "last_touch": "2023-08-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.11808,
+    "touches": 6,
+    "first_touch": "2015-02-28 00:00:00",
+    "last_touch": "2021-11-30 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.15709,
+    "touches": 6,
+    "first_touch": "2003-10-31 00:00:00",
+    "last_touch": "2019-01-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.21118,
+    "touches": 6,
+    "first_touch": "2004-03-31 00:00:00",
+    "last_touch": "2014-12-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.33633,
+    "touches": 6,
+    "first_touch": "2006-12-31 00:00:00",
+    "last_touch": "2010-05-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.38354,
+    "touches": 6,
+    "first_touch": "2007-08-31 00:00:00",
+    "last_touch": "2011-07-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.11721,
+    "touches": 5,
+    "first_touch": "2003-07-31 00:00:00",
+    "last_touch": "2019-06-30 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.16141,
+    "touches": 5,
+    "first_touch": "2016-05-31 00:00:00",
+    "last_touch": "2021-11-30 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.18779,
+    "touches": 5,
+    "first_touch": "2003-06-30 00:00:00",
+    "last_touch": "2010-06-30 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.19134,
+    "touches": 5,
+    "first_touch": "2003-05-31 00:00:00",
+    "last_touch": "2018-01-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.29721,
+    "touches": 5,
+    "first_touch": "2006-05-31 00:00:00",
+    "last_touch": "2006-06-30 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.31143,
+    "touches": 5,
+    "first_touch": "2005-04-30 00:00:00",
+    "last_touch": "2010-07-31 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.34799,
+    "touches": 5,
+    "first_touch": "2005-03-31 00:00:00",
+    "last_touch": "2012-02-29 00:00:00",
+    "strength": "very_strong"
+  },
+  {
+    "level": 1.04915,
+    "touches": 4,
+    "first_touch": "2002-12-31 00:00:00",
+    "last_touch": "2002-12-31 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.0884,
+    "touches": 4,
+    "first_touch": "2003-02-28 00:00:00",
+    "last_touch": "2019-09-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.09536,
+    "touches": 4,
+    "first_touch": "2016-07-31 00:00:00",
+    "last_touch": "2019-08-31 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.09874,
+    "touches": 4,
+    "first_touch": "2016-01-31 00:00:00",
+    "last_touch": "2020-01-31 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.10046,
+    "touches": 4,
+    "first_touch": "2019-12-31 00:00:00",
+    "last_touch": "2023-06-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.11114,
+    "touches": 4,
+    "first_touch": "2017-06-30 00:00:00",
+    "last_touch": "2019-09-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.14206,
+    "touches": 4,
+    "first_touch": "2003-06-30 00:00:00",
+    "last_touch": "2003-11-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.14663,
+    "touches": 4,
+    "first_touch": "2015-05-31 00:00:00",
+    "last_touch": "2019-02-28 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.17163,
+    "touches": 4,
+    "first_touch": "2003-09-30 00:00:00",
+    "last_touch": "2015-08-31 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.18325,
+    "touches": 4,
+    "first_touch": "2004-04-30 00:00:00",
+    "last_touch": "2021-06-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.202,
+    "touches": 4,
+    "first_touch": "2004-07-31 00:00:00",
+    "last_touch": "2006-04-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.20665,
+    "touches": 4,
+    "first_touch": "2003-12-31 00:00:00",
+    "last_touch": "2005-12-31 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.23531,
+    "touches": 4,
+    "first_touch": "2004-01-31 00:00:00",
+    "last_touch": "2014-11-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.24794,
+    "touches": 4,
+    "first_touch": "2006-06-30 00:00:00",
+    "last_touch": "2014-10-31 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.25791,
+    "touches": 4,
+    "first_touch": "2003-12-31 00:00:00",
+    "last_touch": "2014-09-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.27477,
+    "touches": 4,
+    "first_touch": "2009-01-31 00:00:00",
+    "last_touch": "2012-06-30 00:00:00",
+    "strength": "strong"
+  },
+  {
+    "level": 1.0693,
+    "touches": 3,
+    "first_touch": "2003-02-28 00:00:00",
+    "last_touch": "2023-10-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.08537,
+    "touches": 3,
+    "first_touch": "2003-01-31 00:00:00",
+    "last_touch": "2003-01-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.10251,
+    "touches": 3,
+    "first_touch": "2019-07-31 00:00:00",
+    "last_touch": "2019-07-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.12367,
+    "touches": 3,
+    "first_touch": "2003-04-30 00:00:00",
+    "last_touch": "2019-02-28 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.12697,
+    "touches": 3,
+    "first_touch": "2017-05-31 00:00:00",
+    "last_touch": "2018-12-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.12971,
+    "touches": 3,
+    "first_touch": "2015-04-30 00:00:00",
+    "last_touch": "2016-11-30 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.15301,
+    "touches": 3,
+    "first_touch": "2015-02-28 00:00:00",
+    "last_touch": "2015-02-28 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.16593,
+    "touches": 3,
+    "first_touch": "2005-12-31 00:00:00",
+    "last_touch": "2021-08-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.1741,
+    "touches": 3,
+    "first_touch": "2018-08-31 00:00:00",
+    "last_touch": "2021-07-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.18687,
+    "touches": 3,
+    "first_touch": "2003-06-30 00:00:00",
+    "last_touch": "2006-03-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.25518,
+    "touches": 3,
+    "first_touch": "2006-05-31 00:00:00",
+    "last_touch": "2008-12-31 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.26869,
+    "touches": 3,
+    "first_touch": "2006-04-30 00:00:00",
+    "last_touch": "2006-11-30 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.32154,
+    "touches": 3,
+    "first_touch": "2004-12-31 00:00:00",
+    "last_touch": "2011-11-30 00:00:00",
+    "strength": "moderate"
+  },
+  {
+    "level": 1.35851,
+    "touches": 3,
+    "first_touch": "2005-01-31 00:00:00",
+    "last_touch": "2013-09-30 00:00:00",
+    "strength": "moderate"
+  }
+]

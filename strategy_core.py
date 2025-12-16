@@ -1174,9 +1174,20 @@ def _location_context(
     daily_candles: List[Dict],
     price: float,
     direction: str,
+    historical_sr: Optional[Dict[str, List[Dict]]] = None,
 ) -> Tuple[str, bool]:
     """
     Check if price is at a key location (support/resistance zone).
+    
+    Now also checks against historical S/R levels from 20+ years of data.
+    
+    Args:
+        monthly_candles: Monthly OHLCV data
+        weekly_candles: Weekly OHLCV data  
+        daily_candles: Daily OHLCV data
+        price: Current price
+        direction: Trade direction
+        historical_sr: Optional dict with 'monthly' and 'weekly' S/R level lists
     
     Returns:
         Tuple of (note, is_valid_location)
@@ -1199,11 +1210,32 @@ def _location_context(
     atr = _atr(daily_candles, 14)
     zone_tolerance = atr * 0.5 if atr > 0 else range_size * 0.05
     
+    near_historical_sr = False
+    historical_sr_note = ""
+    if historical_sr:
+        sr_tolerance = price * 0.005
+        monthly_levels = historical_sr.get('monthly', [])
+        for sr in monthly_levels[:20]:
+            if abs(price - sr['level']) <= sr_tolerance:
+                near_historical_sr = True
+                historical_sr_note = f" (HTF MN SR: {sr['level']:.5f}, {sr['touches']} touches)"
+                break
+        
+        if not near_historical_sr:
+            weekly_levels = historical_sr.get('weekly', [])
+            for sr in weekly_levels[:30]:
+                if abs(price - sr['level']) <= sr_tolerance:
+                    near_historical_sr = True
+                    historical_sr_note = f" (HTF W1 SR: {sr['level']:.5f}, {sr['touches']} touches)"
+                    break
+    
     if direction == "bullish":
         near_support = any(abs(price - sl) < zone_tolerance for sl in swing_lows[-5:]) if swing_lows else False
         near_range_low = (price - recent_low) < range_size * 0.3
         
-        if near_support or near_range_low:
+        if near_historical_sr:
+            return f"Location: At historical S/R zone{historical_sr_note}", True
+        elif near_support or near_range_low:
             return "Location: Near support zone", True
         else:
             return "Location: Not at key support", False
@@ -1211,7 +1243,9 @@ def _location_context(
         near_resistance = any(abs(price - sh) < zone_tolerance for sh in swing_highs[-5:]) if swing_highs else False
         near_range_high = (recent_high - price) < range_size * 0.3
         
-        if near_resistance or near_range_high:
+        if near_historical_sr:
+            return f"Location: At historical S/R zone{historical_sr_note}", True
+        elif near_resistance or near_range_high:
             return "Location: Near resistance zone", True
         else:
             return "Location: Not at key resistance", False
@@ -1580,6 +1614,7 @@ def compute_confluence(
     h4_candles: List[Dict],
     direction: str,
     params: Optional[StrategyParams] = None,
+    historical_sr: Optional[Dict[str, List[Dict]]] = None,
 ) -> Tuple[Dict[str, bool], Dict[str, str], Tuple]:
     """
     Compute confluence flags for a given setup.
@@ -1593,6 +1628,7 @@ def compute_confluence(
         h4_candles: 4H OHLCV data
         direction: Trade direction ("bullish" or "bearish")
         params: Strategy parameters (uses defaults if None)
+        historical_sr: Optional dict with 'monthly' and 'weekly' S/R levels from historical data
     
     Returns:
         Tuple of (flags dict, notes dict, trade_levels tuple)
@@ -1609,7 +1645,7 @@ def compute_confluence(
     
     if params.use_htf_filter:
         loc_note, loc_ok = _location_context(
-            monthly_candles, weekly_candles, daily_candles, price, direction
+            monthly_candles, weekly_candles, daily_candles, price, direction, historical_sr
         )
     else:
         loc_note, loc_ok = "Location filter disabled", True
