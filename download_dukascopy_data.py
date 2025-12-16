@@ -1,7 +1,7 @@
 """
 Dukascopy Historical Data Downloader
 
-Downloads OHLCV data for all 34 trading assets from Dukascopy for 2023-2024.
+Downloads OHLCV data for all 34 trading assets from Dukascopy for 2023-2025.
 Timeframes: Monthly (MN), Weekly (W1), Daily (D1), 4-Hour (H4)
 
 Usage: python download_dukascopy_data.py
@@ -349,13 +349,13 @@ def main():
     print("DUKASCOPY HISTORICAL DATA DOWNLOADER")
     print("=" * 70)
     print(f"Assets: {len(ASSETS_34)}")
-    print(f"Date range: 2023-01-01 to 2024-12-31")
+    print(f"Date range: 2023-01-01 to 2025-12-16")
     print(f"Timeframes: MN (Monthly), W1 (Weekly), D1 (Daily), H4 (4-Hour)")
     print(f"Output directory: {OUTPUT_DIR}")
     print("=" * 70)
 
     start_date = date(2023, 1, 1)
-    end_date = date(2024, 12, 31)
+    end_date = date(2025, 12, 16)
     timeframes = ["MN", "W1", "D1", "H4"]
 
     successful = []
