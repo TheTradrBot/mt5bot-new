@@ -349,14 +349,14 @@ def main():
     print("DUKASCOPY HISTORICAL DATA DOWNLOADER")
     print("=" * 70)
     print(f"Assets: {len(ASSETS_34)}")
-    print(f"Date range: 2023-01-01 to 2025-12-16")
-    print(f"Timeframes: MN (Monthly), W1 (Weekly), D1 (Daily), H4 (4-Hour)")
+    print(f"Date range: 2003-01-01 to now")
+    print(f"Timeframes: MN (Monthly)")
     print(f"Output directory: {OUTPUT_DIR}")
     print("=" * 70)
 
-    start_date = date(2023, 1, 1)
-    end_date = date(2025, 12, 16)
-    timeframes = ["MN", "W1", "D1", "H4"]
+    start_date = date(2003, 1, 1)
+    end_date = date.today()
+    timeframes = ["MN"]
 
     successful = []
     failed = []
