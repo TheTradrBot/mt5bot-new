@@ -75,6 +75,27 @@ Trades execute only when >= 5 pillars align with valid R:R ratio.
 - Pre-trade spread validation
 - 5 risk modes: Aggressive, Normal, Conservative, Ultra-Safe, Halted
 
+## Support/Resistance Level Detection
+The project includes `detect_sr_levels.py` which provides TradingView-style horizontal S/R line detection:
+
+- Uses scipy.signal.find_peaks for swing high/low identification
+- Clusters similar levels within asset-specific tolerances (5-10 pips for major FX)
+- Counts touches with reversal confirmation (minimum 3 touches required)
+- Each candle contributes maximum 1 touch (prevents double-counting)
+- Calculates time-decayed strength scores
+
+### Generated S/R Files
+- Location: `data/sr_levels/`
+- Format: `{SYMBOL}_{TIMEFRAME}_sr.json` (e.g., EURUSD_MN_sr.json)
+- Timeframes: Weekly (W1) and Monthly (MN)
+- Summary: `data/sr_levels/all_sr_summary.json`
+
+### Using S/R Levels in Strategy
+```python
+from detect_sr_levels import load_sr_levels
+levels = load_sr_levels("EURUSD", "MN")  # Returns list of level dicts
+```
+
 ## Supported Assets
 34 assets including:
 - Forex: Majors + Cross pairs (28)
