@@ -604,6 +604,26 @@ def run_full_period_backtest(
     atr_volatility_ratio: float = 0.8,  # ATR(14)/ATR(50) ratio for range mode
     atr_trail_multiplier: float = 1.5,  # ATR multiplier for trailing stops
     partial_exit_at_1r: bool = True,  # Whether to take partial at 1R
+    # ============================================================================
+    # NEW: EXPANDED PARAMETERS (V2 Enhancement)
+    # ============================================================================
+    use_adx_slope_rising: bool = False,  # ADX slope-based early trend entry
+    use_rsi_range: bool = False,  # Dynamic RSI in Range Mode
+    rsi_period_range: int = 14,  # RSI period for range mode
+    use_bollinger_range: bool = False,  # Dynamic Bollinger Bands in Range Mode
+    bb_period_range: int = 20,  # Bollinger Band period for range mode
+    bb_std_range: float = 2.0,  # Bollinger Band std dev for range mode
+    use_rsi_trend: bool = False,  # RSI Filtering in Trend Mode
+    rsi_trend_overbought: float = 80.0,  # RSI overbought threshold for trend mode
+    rsi_trend_oversold: float = 20.0,  # RSI oversold threshold for trend mode
+    use_fib_0786_only: bool = False,  # Only use Fib 0.786 level
+    use_liquidity_sweep_required: bool = False,  # Require liquidity sweep
+    use_market_structure_bos_only: bool = False,  # Only BOS for market structure
+    use_atr_trailing: bool = False,  # Use ATR-based trailing stop
+    use_volatility_sizing_boost: bool = False,  # Boost sizing in high volatility
+    fib_zone_type: str = 'golden_only',  # Fib zone selection
+    candle_pattern_strictness: str = 'moderate',  # Candle pattern strictness
+    partial_exit_pct: float = 0.5,  # Partial exit percentage
 ) -> List[Trade]:
     """
     Run backtest for a given period with Regime-Adaptive V2 filtering.
@@ -1002,43 +1022,63 @@ class OptunaOptimizer:
         - Partial profit taking and trail management
         """
         # ============================================================================
-        # REGIME-ADAPTIVE V2 PARAMETER SEARCH SPACE
+        # REGIME-ADAPTIVE V2 EXPANDED PARAMETER SEARCH SPACE (20+ Parameters)
         # ============================================================================
         params = {
-            # Core risk management
+            # Core risk management (keep existing)
             'risk_per_trade_pct': trial.suggest_float('risk_per_trade_pct', 0.5, 0.8, step=0.05),
             'min_confluence_score': trial.suggest_int('min_confluence_score', 3, 6),
             'min_quality_factors': trial.suggest_int('min_quality_factors', 1, 4),
             
-            # Regime detection thresholds
-            # ADX >= trend threshold: Trend Mode (momentum following)
-            # ADX < range threshold: Range Mode (conservative mean reversion)
-            # ADX between: Transition Zone (NO ENTRIES)
-            'adx_trend_threshold': trial.suggest_float('adx_trend_threshold', 23.0, 30.0, step=1.0),
-            'adx_range_threshold': trial.suggest_float('adx_range_threshold', 18.0, 21.0, step=1.0),
+            # EXPANDED: Regime detection thresholds (wider range)
+            'adx_trend_threshold': trial.suggest_float('adx_trend_threshold', 20.0, 28.0, step=1.0),
+            'adx_range_threshold': trial.suggest_float('adx_range_threshold', 15.0, 20.0, step=1.0),
             
-            # Mode-specific confluence requirements
-            # Trend mode can use slightly lower confluence due to momentum
-            # Range mode requires higher confluence for conservative entries
-            'trend_min_confluence': trial.suggest_int('trend_min_confluence', 6, 7),
-            'range_min_confluence': trial.suggest_int('range_min_confluence', 5, 6),
+            # NEW: ADX slope-based early trend entry
+            'use_adx_slope_rising': trial.suggest_categorical('use_adx_slope_rising', [True, False]),
             
-            # Range mode filters (ALL must pass for range mode entry)
-            # RSI extremes for mean reversion
-            'rsi_oversold_range': trial.suggest_float('rsi_oversold_range', 20.0, 28.0, step=2.0),
-            'rsi_overbought_range': trial.suggest_float('rsi_overbought_range', 72.0, 80.0, step=2.0),
-            # ATR ratio: current ATR(14) must be < ratio * ATR(50)
-            'atr_volatility_ratio': trial.suggest_float('atr_volatility_ratio', 0.7, 0.9, step=0.05),
+            # EXPANDED: Mode-specific confluence (relaxed ranges)
+            'trend_min_confluence': trial.suggest_int('trend_min_confluence', 5, 7),
+            'range_min_confluence': trial.suggest_int('range_min_confluence', 4, 6),
             
-            # Trail and partial profit taking
-            'atr_trail_multiplier': trial.suggest_float('atr_trail_multiplier', 1.2, 2.0, step=0.1),
-            'partial_exit_at_1r': trial.suggest_categorical('partial_exit_at_1r', [True, False]),
+            # NEW: Dynamic RSI in Range Mode
+            'use_rsi_range': trial.suggest_categorical('use_rsi_range', [True, False]),
+            'rsi_period_range': trial.suggest_int('rsi_period_range', 10, 20) if trial.params.get('use_rsi_range', False) else 14,
             
-            # Existing filters
+            # Range mode RSI thresholds
+            'rsi_oversold_range': trial.suggest_float('rsi_oversold_range', 20.0, 35.0, step=2.0),
+            'rsi_overbought_range': trial.suggest_float('rsi_overbought_range', 65.0, 80.0, step=2.0),
+            
+            # NEW: Dynamic Bollinger Bands in Range Mode
+            'use_bollinger_range': trial.suggest_categorical('use_bollinger_range', [True, False]),
+            'bb_period_range': trial.suggest_int('bb_period_range', 18, 25),
+            'bb_std_range': trial.suggest_float('bb_std_range', 1.8, 2.5, step=0.1),
+            
+            # NEW: RSI Filtering in Trend Mode
+            'use_rsi_trend': trial.suggest_categorical('use_rsi_trend', [True, False]),
+            'rsi_trend_overbought': trial.suggest_float('rsi_trend_overbought', 75.0, 85.0, step=2.0),
+            'rsi_trend_oversold': trial.suggest_float('rsi_trend_oversold', 15.0, 25.0, step=2.0),
+            
+            # NEW: Strategy-Level Toggles
+            'use_fib_0786_only': trial.suggest_categorical('use_fib_0786_only', [True, False]),
+            'use_liquidity_sweep_required': trial.suggest_categorical('use_liquidity_sweep_required', [True, False]),
+            'use_market_structure_bos_only': trial.suggest_categorical('use_market_structure_bos_only', [True, False]),
+            'use_atr_trailing': trial.suggest_categorical('use_atr_trailing', [True, False]),
+            'use_volatility_sizing_boost': trial.suggest_categorical('use_volatility_sizing_boost', [True, False]),
+            
+            # Categorical/Other
+            'fib_zone_type': trial.suggest_categorical('fib_zone_type', ['golden_only', 'extended', 'full_retracement']),
+            'candle_pattern_strictness': trial.suggest_categorical('candle_pattern_strictness', ['strict', 'moderate', 'loose']),
+            'partial_exit_pct': trial.suggest_float('partial_exit_pct', 0.4, 0.7, step=0.05),
+            'atr_trail_multiplier': trial.suggest_float('atr_trail_multiplier', 1.5, 3.5, step=0.2),
+            'atr_vol_ratio_range': trial.suggest_float('atr_vol_ratio_range', 0.6, 0.9, step=0.05),
+            
+            # Existing filters (keep)
             'atr_min_percentile': trial.suggest_float('atr_min_percentile', 60.0, 85.0, step=5.0),
             'trail_activation_r': trial.suggest_float('trail_activation_r', 1.8, 3.4, step=0.2),
             'december_atr_multiplier': trial.suggest_float('december_atr_multiplier', 1.3, 1.8, step=0.1),
             'volatile_asset_boost': trial.suggest_float('volatile_asset_boost', 1.3, 2.0, step=0.1),
+            'partial_exit_at_1r': trial.suggest_categorical('partial_exit_at_1r', [True, False]),
         }
         
         training_trades = run_full_period_backtest(
@@ -1061,9 +1101,27 @@ class OptunaOptimizer:
             range_min_confluence=params['range_min_confluence'],
             rsi_oversold_range=params['rsi_oversold_range'],
             rsi_overbought_range=params['rsi_overbought_range'],
-            atr_volatility_ratio=params['atr_volatility_ratio'],
+            atr_volatility_ratio=params['atr_vol_ratio_range'],
             atr_trail_multiplier=params['atr_trail_multiplier'],
             partial_exit_at_1r=params['partial_exit_at_1r'],
+            # NEW: Expanded parameters
+            use_adx_slope_rising=params['use_adx_slope_rising'],
+            use_rsi_range=params['use_rsi_range'],
+            rsi_period_range=params['rsi_period_range'],
+            use_bollinger_range=params['use_bollinger_range'],
+            bb_period_range=params['bb_period_range'],
+            bb_std_range=params['bb_std_range'],
+            use_rsi_trend=params['use_rsi_trend'],
+            rsi_trend_overbought=params['rsi_trend_overbought'],
+            rsi_trend_oversold=params['rsi_trend_oversold'],
+            use_fib_0786_only=params['use_fib_0786_only'],
+            use_liquidity_sweep_required=params['use_liquidity_sweep_required'],
+            use_market_structure_bos_only=params['use_market_structure_bos_only'],
+            use_atr_trailing=params['use_atr_trailing'],
+            use_volatility_sizing_boost=params['use_volatility_sizing_boost'],
+            fib_zone_type=params['fib_zone_type'],
+            candle_pattern_strictness=params['candle_pattern_strictness'],
+            partial_exit_pct=params['partial_exit_pct'],
         )
         
         if not training_trades or len(training_trades) == 0:
@@ -1191,15 +1249,26 @@ class OptunaOptimizer:
             dd_penalty = 0.4 * (max_drawdown_pct - 0.10)
         
         # ----------------------------------------------------------------------------
-        # TRADE BALANCE BONUS
-        # Ensures reasonable trade count per quarter (not overtrading or undertrading)
-        # 5-40 trades per quarter is considered balanced activity
+        # ENHANCED: Trade Balance Bonus for 12-35 trades per quarter
+        # More nuanced penalty system for undertrading and overtrading
         # ----------------------------------------------------------------------------
-        trade_balance_bonus = 0.2
+        trade_balance_bonus = 0.25  # Base bonus
         for q, count in quarterly_trade_counts.items():
-            if count < 5 or count > 40:
-                trade_balance_bonus = 0.0
-                break
+            if count < 12:
+                # Penalty for undertrading
+                trade_balance_bonus -= 0.05 * (12 - count)
+            elif count > 35:
+                # Penalty for overtrading
+                trade_balance_bonus -= 0.02 * (count - 35)
+        trade_balance_bonus = max(0.0, min(0.3, trade_balance_bonus))
+        
+        # ENHANCED: Consistency bonus with $20k minimum quarterly profit
+        if min_quarterly_profit >= 20000:
+            consistency_bonus += 0.4  # Strong bonus for $20k+ quarters
+        elif min_quarterly_profit >= 15000:
+            consistency_bonus += 0.2
+        elif min_quarterly_profit < 10000:
+            consistency_bonus -= 0.3  # Penalty for weak quarters
         
         # ----------------------------------------------------------------------------
         # FINAL SCORE CALCULATION
@@ -1305,6 +1374,7 @@ class OptunaOptimizer:
                 print(f"  {k}: {v}")
         
         params_to_save = {
+            # Core risk management
             'min_confluence': self.best_params.get('min_confluence_score', 5),
             'min_quality_factors': self.best_params.get('min_quality_factors', 2),
             'risk_per_trade_pct': self.best_params.get('risk_per_trade_pct', 0.5),
@@ -1319,9 +1389,32 @@ class OptunaOptimizer:
             'range_min_confluence': self.best_params.get('range_min_confluence', 5),
             'rsi_oversold_range': self.best_params.get('rsi_oversold_range', 25.0),
             'rsi_overbought_range': self.best_params.get('rsi_overbought_range', 75.0),
-            'atr_volatility_ratio': self.best_params.get('atr_volatility_ratio', 0.8),
+            'atr_volatility_ratio': self.best_params.get('atr_vol_ratio_range', 0.8),
             'atr_trail_multiplier': self.best_params.get('atr_trail_multiplier', 1.5),
             'partial_exit_at_1r': self.best_params.get('partial_exit_at_1r', True),
+            # NEW: ADX slope-based early trend entry
+            'use_adx_slope_rising': self.best_params.get('use_adx_slope_rising', False),
+            # NEW: Dynamic RSI in Range Mode
+            'use_rsi_range': self.best_params.get('use_rsi_range', False),
+            'rsi_period_range': self.best_params.get('rsi_period_range', 14),
+            # NEW: Dynamic Bollinger Bands in Range Mode
+            'use_bollinger_range': self.best_params.get('use_bollinger_range', False),
+            'bb_period_range': self.best_params.get('bb_period_range', 20),
+            'bb_std_range': self.best_params.get('bb_std_range', 2.0),
+            # NEW: RSI Filtering in Trend Mode
+            'use_rsi_trend': self.best_params.get('use_rsi_trend', False),
+            'rsi_trend_overbought': self.best_params.get('rsi_trend_overbought', 80.0),
+            'rsi_trend_oversold': self.best_params.get('rsi_trend_oversold', 20.0),
+            # NEW: Strategy-Level Toggles
+            'use_fib_0786_only': self.best_params.get('use_fib_0786_only', False),
+            'use_liquidity_sweep_required': self.best_params.get('use_liquidity_sweep_required', False),
+            'use_market_structure_bos_only': self.best_params.get('use_market_structure_bos_only', False),
+            'use_atr_trailing': self.best_params.get('use_atr_trailing', False),
+            'use_volatility_sizing_boost': self.best_params.get('use_volatility_sizing_boost', False),
+            # Categorical/Other
+            'fib_zone_type': self.best_params.get('fib_zone_type', 'golden_only'),
+            'candle_pattern_strictness': self.best_params.get('candle_pattern_strictness', 'moderate'),
+            'partial_exit_pct': self.best_params.get('partial_exit_pct', 0.5),
         }
         
         try:

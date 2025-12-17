@@ -180,6 +180,40 @@ class StrategyParams:
     partial_exit_pct: float = 0.50  # Percentage to close at 1R (50%)
     atr_trail_multiplier: float = 1.5  # ATR multiplier for trailing stop distance
     
+    # ============================================================================
+    # REGIME-ADAPTIVE V2 ENHANCED PARAMETERS
+    # Additional toggles and parameters for refined regime-based trading
+    # ============================================================================
+    
+    # ADX Slope-Based Early Trend Entry
+    use_adx_slope_rising: bool = False  # If True, allow Trend Mode entries on rising ADX (even slightly below threshold) combined with strong +DI/-DI crossover
+    
+    # Dynamic RSI in Range Mode
+    use_rsi_range: bool = True  # If True, require RSI extremes for Range entries
+    rsi_period_range: int = 14  # RSI period for range mode (10-20)
+    
+    # Dynamic Bollinger Bands in Range Mode
+    use_bollinger_range: bool = False  # If True, require price close outside band + reversal candle inside band
+    bb_period_range: int = 20  # Bollinger Bands period (18-25)
+    bb_std_range: float = 2.0  # Bollinger Bands standard deviation (1.8-2.5)
+    
+    # RSI Filtering in Trend Mode
+    use_rsi_trend: bool = False  # If True, skip Trend entries when RSI is extremely overbought/oversold
+    rsi_trend_overbought: float = 80.0  # RSI threshold for overbought in trend mode (75-85)
+    rsi_trend_oversold: float = 20.0  # RSI threshold for oversold in trend mode (15-25)
+    
+    # Additional Strategy-Level Toggles
+    use_fib_0786_only: bool = False  # True: require 0.786 zone only; False: allow broader 0.618-0.886
+    use_liquidity_sweep_required: bool = False  # True: mandatory liquidity sweep pillar
+    use_market_structure_bos_only: bool = False  # True: require BOS only; False: allow BOS or CHoCH
+    use_atr_trailing: bool = True  # Enable ATR trailing on runner
+    use_volatility_sizing_boost: bool = False  # Increase risk % in high ATR periods
+    
+    # Categorical/Other Parameters
+    fib_zone_type: str = 'golden_only'  # Options: 'golden_only', 'extended', 'full_retracement'
+    candle_pattern_strictness: str = 'moderate'  # Options: 'strict', 'moderate', 'loose'
+    atr_vol_ratio_range: float = 0.8  # For Range Mode low-vol filter (0.6-0.9)
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert parameters to dictionary."""
         return {
@@ -244,6 +278,24 @@ class StrategyParams:
             "partial_exit_at_1r": self.partial_exit_at_1r,
             "partial_exit_pct": self.partial_exit_pct,
             "atr_trail_multiplier": self.atr_trail_multiplier,
+            # REGIME-ADAPTIVE V2 ENHANCED PARAMETERS
+            "use_adx_slope_rising": self.use_adx_slope_rising,
+            "use_rsi_range": self.use_rsi_range,
+            "rsi_period_range": self.rsi_period_range,
+            "use_bollinger_range": self.use_bollinger_range,
+            "bb_period_range": self.bb_period_range,
+            "bb_std_range": self.bb_std_range,
+            "use_rsi_trend": self.use_rsi_trend,
+            "rsi_trend_overbought": self.rsi_trend_overbought,
+            "rsi_trend_oversold": self.rsi_trend_oversold,
+            "use_fib_0786_only": self.use_fib_0786_only,
+            "use_liquidity_sweep_required": self.use_liquidity_sweep_required,
+            "use_market_structure_bos_only": self.use_market_structure_bos_only,
+            "use_atr_trailing": self.use_atr_trailing,
+            "use_volatility_sizing_boost": self.use_volatility_sizing_boost,
+            "fib_zone_type": self.fib_zone_type,
+            "candle_pattern_strictness": self.candle_pattern_strictness,
+            "atr_vol_ratio_range": self.atr_vol_ratio_range,
         }
     
     @classmethod
