@@ -37,3 +37,7 @@ discord.py
 numpy
 pandas
 requests
+discord.py
+numpy
+pandas
+requests
