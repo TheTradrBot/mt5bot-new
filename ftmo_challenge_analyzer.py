@@ -624,6 +624,7 @@ def run_full_period_backtest(
     fib_zone_type: str = 'golden_only',  # Fib zone selection
     candle_pattern_strictness: str = 'moderate',  # Candle pattern strictness
     partial_exit_pct: float = 0.5,  # Partial exit percentage
+    atr_vol_ratio_range: float = 0.8,  # ATR volatility ratio for range mode filter
 ) -> List[Trade]:
     """
     Run backtest for a given period with Regime-Adaptive V2 filtering.
@@ -673,7 +674,8 @@ def run_full_period_backtest(
             regime_info = detect_regime(
                 daily_candles=d1_candles,
                 adx_trend_threshold=adx_trend_threshold,
-                adx_range_threshold=adx_range_threshold
+                adx_range_threshold=adx_range_threshold,
+                use_adx_slope_rising=use_adx_slope_rising
             )
             
             if regime_info['mode'] == 'Transition':
@@ -708,6 +710,24 @@ def run_full_period_backtest(
                 atr_volatility_ratio=atr_volatility_ratio,
                 atr_trail_multiplier=atr_trail_multiplier,
                 partial_exit_at_1r=partial_exit_at_1r,
+                use_adx_slope_rising=use_adx_slope_rising,
+                use_rsi_range=use_rsi_range,
+                rsi_period_range=rsi_period_range,
+                use_bollinger_range=use_bollinger_range,
+                bb_period_range=bb_period_range,
+                bb_std_range=bb_std_range,
+                use_rsi_trend=use_rsi_trend,
+                rsi_trend_overbought=rsi_trend_overbought,
+                rsi_trend_oversold=rsi_trend_oversold,
+                use_fib_0786_only=use_fib_0786_only,
+                use_liquidity_sweep_required=use_liquidity_sweep_required,
+                use_market_structure_bos_only=use_market_structure_bos_only,
+                use_atr_trailing=use_atr_trailing,
+                use_volatility_sizing_boost=use_volatility_sizing_boost,
+                fib_zone_type=fib_zone_type,
+                candle_pattern_strictness=candle_pattern_strictness,
+                atr_vol_ratio_range=atr_vol_ratio_range,
+                partial_exit_pct=partial_exit_pct,
             )
             
             trades = simulate_trades(
@@ -736,6 +756,12 @@ def run_full_period_backtest(
                         confluence_score=confluence,
                         params=params,
                         historical_sr=None,
+                        use_rsi_range=use_rsi_range,
+                        use_bollinger_range=use_bollinger_range,
+                        bb_period_range=bb_period_range,
+                        bb_std_range=bb_std_range,
+                        rsi_period_range=rsi_period_range,
+                        atr_vol_ratio_range=atr_vol_ratio_range,
                     )
                     
                     if not is_valid:
@@ -1102,6 +1128,7 @@ class OptunaOptimizer:
             rsi_oversold_range=params['rsi_oversold_range'],
             rsi_overbought_range=params['rsi_overbought_range'],
             atr_volatility_ratio=params['atr_vol_ratio_range'],
+            atr_vol_ratio_range=params['atr_vol_ratio_range'],
             atr_trail_multiplier=params['atr_trail_multiplier'],
             partial_exit_at_1r=params['partial_exit_at_1r'],
             # NEW: Expanded parameters
@@ -1249,18 +1276,36 @@ class OptunaOptimizer:
             dd_penalty = 0.4 * (max_drawdown_pct - 0.10)
         
         # ----------------------------------------------------------------------------
+        # HARD FAIL: Reject strategies with severely undertrading quarters
+        # Any quarter with fewer than 5 trades is a hard fail
+        # ----------------------------------------------------------------------------
+        for q, count in quarterly_trade_counts.items():
+            if count < 5:
+                trial.set_user_attr('hard_fail_reason', f'Quarter {q} had only {count} trades (minimum 5 required)')
+                return -100000.0
+        
+        # ----------------------------------------------------------------------------
         # ENHANCED: Trade Balance Bonus for 12-35 trades per quarter
         # More nuanced penalty system for undertrading and overtrading
         # ----------------------------------------------------------------------------
-        trade_balance_bonus = 0.25  # Base bonus
+        trade_balance_bonus = 0.0
+        active_quarters = 0
         for q, count in quarterly_trade_counts.items():
-            if count < 12:
-                # Penalty for undertrading
-                trade_balance_bonus -= 0.05 * (12 - count)
-            elif count > 35:
-                # Penalty for overtrading
-                trade_balance_bonus -= 0.02 * (count - 35)
-        trade_balance_bonus = max(0.0, min(0.3, trade_balance_bonus))
+            if count == 0:
+                trade_balance_bonus -= 0.25  # Strong penalty for zero-trade quarters
+            elif count < 12:
+                trade_balance_bonus -= 0.06 * (12 - count)  # Penalty for undertrading
+            elif count >= 12 and count <= 35:
+                trade_balance_bonus += 0.04  # Bonus for balanced trading
+                active_quarters += 1
+            else:  # count > 35
+                trade_balance_bonus -= 0.03 * (count - 35)  # Penalty for overtrading
+
+        # Additional penalty if any quarter has zero trades
+        if any(count == 0 for count in quarterly_trade_counts.values()):
+            trade_balance_bonus -= 0.2
+
+        trade_balance_bonus = max(-0.5, min(0.3, trade_balance_bonus))
         
         # ENHANCED: Consistency bonus with $20k minimum quarterly profit
         if min_quarterly_profit >= 20000:
