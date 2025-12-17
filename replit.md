@@ -67,6 +67,29 @@ Trades execute only when >= 5 pillars align with valid R:R ratio.
 - **RSI Divergence**: Bullish/bearish divergence detection
 - **Bollinger Mean Reversion**: Band touch confluence signals
 
+### Regime-Adaptive V2 Enhancement (December 2025)
+Expanded optimization from ~16 to 31+ tunable parameters with dynamic regime-based filtering:
+
+**Regime Detection Improvements:**
+- ADX slope-based early trend detection (`use_adx_slope_rising`)
+- Separate ADX thresholds for Trend Mode (25+) and Range Mode (<20)
+- Regime-specific confluence requirements
+
+**Range Mode Enhancements:**
+- Dynamic RSI reversal filtering (`use_rsi_range`, configurable oversold/overbought levels)
+- Bollinger Band reversal checks (`use_bollinger_range`, configurable period/std)
+- ATR volatility ratio filter for low-volatility range environments
+
+**Trend Mode Enhancements:**
+- Optional RSI filtering to avoid overbought longs/oversold shorts (`use_rsi_trend`)
+- Separate trend/range confluence thresholds
+
+**Objective Function Improvements:**
+- Hard fail for quarters with <5 trades (returns -100000)
+- Enhanced trade balance scoring: -0.25 penalty for zero-trade quarters
+- Rewards for balanced trading (12-35 trades per quarter)
+- $20k+ quarterly payout bonuses
+
 ## Risk Management
 - Accurate symbol-specific position sizing (all 34 assets safe)
 - Dynamic risk per trade (0.5-1.0%)
