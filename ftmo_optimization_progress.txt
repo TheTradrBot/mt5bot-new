@@ -53,3 +53,4 @@
 [2025-12-17 17:52:26] Trial #48: value=86468, best_value=93008, params={"risk_per_trade_pct": 0.75, "min_confluence_score": 5, "min_quality_factors": 2, "atr_min_percentile": 70.0, "trail_activation_r": 2.6}
 [2025-12-17 17:54:08] Trial #49: value=91722, best_value=93008, params={"risk_per_trade_pct": 0.75, "min_confluence_score": 5, "min_quality_factors": 2, "atr_min_percentile": 70.0, "trail_activation_r": 2.6}
 [2025-12-17 17:55:53] Trial #50: value=91722, best_value=93008, params={"risk_per_trade_pct": 0.75, "min_confluence_score": 5, "min_quality_factors": 2, "atr_min_percentile": 70.0, "trail_activation_r": 2.6}
+[2025-12-17 17:57:36] Trial #51: value=66996, best_value=93008, params={"risk_per_trade_pct": 0.75, "min_confluence_score": 5, "min_quality_factors": 2, "atr_min_percentile": 70.0, "trail_activation_r": 2.6}
