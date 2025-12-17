@@ -1,0 +1,60 @@
+================================================================================
+FTMO CHALLENGE ANALYZER - SUMMARY REPORT
+Generated: 2025-12-17 17:37:25
+================================================================================
+
+OPTIMIZATION RESULTS
+----------------------------------------
+Best Score: 93007.81
+Trials This Session: 5
+Total Trials: 42
+
+BEST PARAMETERS
+----------------------------------------
+  atr_min_percentile: 70.0000
+  december_atr_multiplier: 1.7000
+  min_confluence_score: 5
+  min_quality_factors: 2
+  risk_per_trade_pct: 0.7500
+  trail_activation_r: 2.6000
+  volatile_asset_boost: 1.9000
+
+TRAINING PERIOD (2023-01-01 to 2024-09-30)
+----------------------------------------
+  Trades: 104
+  Total R: +65.34
+  Win Rate: 51.0%
+  Avg R per Trade: +0.628
+
+VALIDATION PERIOD (2024-10-01 to 2025-12-17)
+----------------------------------------
+  Trades: 26
+  Total R: +3.44
+  Win Rate: 34.6%
+  Avg R per Trade: +0.132
+
+FULL PERIOD (2023-2025)
+----------------------------------------
+  Trades: 60
+  Total R: +3.04
+  Win Rate: 31.7%
+  Avg R per Trade: +0.051
+
+QUARTERLY BREAKDOWN
+----------------------------------------
+  2023_Q1: 0 trades, +0.0R, 0% win rate
+  2023_Q2: 5 trades, -1.9R, 20% win rate
+  2023_Q3: 0 trades, +0.0R, 0% win rate
+  2023_Q4: 7 trades, -3.2R, 14% win rate
+  2024_Q1: 9 trades, +0.8R, 33% win rate
+  2024_Q2: 3 trades, -2.1R, 0% win rate
+  2024_Q3: 4 trades, -0.7R, 25% win rate
+  2024_Q4: 9 trades, +9.9R, 67% win rate
+  2025_Q1: 13 trades, +1.0R, 31% win rate
+  2025_Q2: 1 trades, +2.1R, 100% win rate
+  2025_Q3: 2 trades, -2.0R, 0% win rate
+  2025_Q4: 7 trades, -0.8R, 29% win rate
+
+================================================================================
+End of Summary
+================================================================================
