@@ -1079,23 +1079,6 @@ class OptunaOptimizer:
             'trend_min_confluence': trial.suggest_int('trend_min_confluence', 5, 7),
             'range_min_confluence': trial.suggest_int('range_min_confluence', 4, 6),
             
-            # NEW: Dynamic RSI in Range Mode
-            'use_rsi_range': trial.suggest_categorical('use_rsi_range', [True, False]),
-            'rsi_period_range': trial.suggest_int('rsi_period_range', 10, 20) if trial.params.get('use_rsi_range', False) else 14,
-            
-            # Range mode RSI thresholds
-            'rsi_oversold_range': trial.suggest_float('rsi_oversold_range', 20.0, 35.0, step=2.0),
-            'rsi_overbought_range': trial.suggest_float('rsi_overbought_range', 65.0, 80.0, step=2.0),
-            
-            # NEW: Dynamic Bollinger Bands in Range Mode
-            'use_bollinger_range': trial.suggest_categorical('use_bollinger_range', [True, False]),
-            'bb_period_range': trial.suggest_int('bb_period_range', 18, 25),
-            'bb_std_range': trial.suggest_float('bb_std_range', 1.8, 2.5, step=0.1),
-            
-            # NEW: RSI Filtering in Trend Mode
-            'use_rsi_trend': trial.suggest_categorical('use_rsi_trend', [True, False]),
-            'rsi_trend_overbought': trial.suggest_float('rsi_trend_overbought', 75.0, 85.0, step=2.0),
-            'rsi_trend_oversold': trial.suggest_float('rsi_trend_oversold', 15.0, 25.0, step=2.0),
             
             # NEW: Strategy-Level Toggles
             'use_fib_0786_only': trial.suggest_categorical('use_fib_0786_only', [True, False]),
@@ -1137,22 +1120,12 @@ class OptunaOptimizer:
             adx_range_threshold=params['adx_range_threshold'],
             trend_min_confluence=params['trend_min_confluence'],
             range_min_confluence=params['range_min_confluence'],
-            rsi_oversold_range=params['rsi_oversold_range'],
-            rsi_overbought_range=params['rsi_overbought_range'],
             atr_volatility_ratio=params['atr_vol_ratio_range'],
             atr_vol_ratio_range=params['atr_vol_ratio_range'],
             atr_trail_multiplier=params['atr_trail_multiplier'],
             partial_exit_at_1r=params['partial_exit_at_1r'],
             # NEW: Expanded parameters
             use_adx_slope_rising=params['use_adx_slope_rising'],
-            use_rsi_range=params['use_rsi_range'],
-            rsi_period_range=params['rsi_period_range'],
-            use_bollinger_range=params['use_bollinger_range'],
-            bb_period_range=params['bb_period_range'],
-            bb_std_range=params['bb_std_range'],
-            use_rsi_trend=params['use_rsi_trend'],
-            rsi_trend_overbought=params['rsi_trend_overbought'],
-            rsi_trend_oversold=params['rsi_trend_oversold'],
             use_fib_0786_only=params['use_fib_0786_only'],
             use_liquidity_sweep_required=params['use_liquidity_sweep_required'],
             use_market_structure_bos_only=params['use_market_structure_bos_only'],

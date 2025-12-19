@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple, Any
 
-from indicators import bollinger_bands, calculate_adx_with_slope, check_di_crossover
+from indicators import calculate_adx_with_slope, check_di_crossover
 
 try:
     from fibonacci_strategy import analyze_fib_setup
@@ -142,13 +142,9 @@ class StrategyParams:
     use_candle_rejection: bool = True  # Pinbar/engulfing at SR
     
     # Advanced quant filters
-    use_rsi_divergence: bool = True
-    rsi_period: int = 14
     use_momentum_filter: bool = True
     momentum_lookback: int = 10
     use_mean_reversion: bool = True
-    bollinger_period: int = 20
-    bollinger_std: float = 2.0
     
     # ML filter parameters
     ml_min_prob: float = 0.6
@@ -173,14 +169,11 @@ class StrategyParams:
     # Range Mode Filters (Ultra-Conservative Mean Reversion)
     # ALL conditions must be met for Range Mode entry
     range_min_confluence: int = 5  # Minimum confluence score for range mode entries
-    rsi_oversold_range: float = 25.0  # RSI below this for long entries in range mode
-    rsi_overbought_range: float = 75.0  # RSI above this for short entries in range mode
     atr_volatility_ratio: float = 0.8  # Current ATR(14) must be < this * ATR(50) average
     fib_range_target: float = 0.786  # Fib retracement level for range mode entries
     
     # Trend Mode Parameters
     trend_min_confluence: int = 6  # Minimum confluence for trend mode entries
-    trend_rsi_filter_enabled: bool = True  # Enable RSI filtering in trend mode
     
     # Partial Profit Taking and Trail Management
     partial_exit_at_1r: bool = True  # Take partial profit at 1R
@@ -194,20 +187,6 @@ class StrategyParams:
     
     # ADX Slope-Based Early Trend Entry
     use_adx_slope_rising: bool = False  # If True, allow Trend Mode entries on rising ADX (even slightly below threshold) combined with strong +DI/-DI crossover
-    
-    # Dynamic RSI in Range Mode
-    use_rsi_range: bool = True  # If True, require RSI extremes for Range entries
-    rsi_period_range: int = 14  # RSI period for range mode (10-20)
-    
-    # Dynamic Bollinger Bands in Range Mode
-    use_bollinger_range: bool = False  # If True, require price close outside band + reversal candle inside band
-    bb_period_range: int = 20  # Bollinger Bands period (18-25)
-    bb_std_range: float = 2.0  # Bollinger Bands standard deviation (1.8-2.5)
-    
-    # RSI Filtering in Trend Mode
-    use_rsi_trend: bool = False  # If True, skip Trend entries when RSI is extremely overbought/oversold
-    rsi_trend_overbought: float = 80.0  # RSI threshold for overbought in trend mode (75-85)
-    rsi_trend_oversold: float = 20.0  # RSI threshold for oversold in trend mode (15-25)
     
     # Additional Strategy-Level Toggles
     use_fib_0786_only: bool = False  # True: require 0.786 zone only; False: allow broader 0.618-0.886
@@ -262,13 +241,9 @@ class StrategyParams:
             "use_displacement_filter": self.use_displacement_filter,
             "displacement_atr_mult": self.displacement_atr_mult,
             "use_candle_rejection": self.use_candle_rejection,
-            "use_rsi_divergence": self.use_rsi_divergence,
-            "rsi_period": self.rsi_period,
             "use_momentum_filter": self.use_momentum_filter,
             "momentum_lookback": self.momentum_lookback,
             "use_mean_reversion": self.use_mean_reversion,
-            "bollinger_period": self.bollinger_period,
-            "bollinger_std": self.bollinger_std,
             "ml_min_prob": self.ml_min_prob,
             "trail_activation_r": self.trail_activation_r,
             "december_atr_multiplier": self.december_atr_multiplier,
@@ -276,25 +251,14 @@ class StrategyParams:
             "adx_trend_threshold": self.adx_trend_threshold,
             "adx_range_threshold": self.adx_range_threshold,
             "range_min_confluence": self.range_min_confluence,
-            "rsi_oversold_range": self.rsi_oversold_range,
-            "rsi_overbought_range": self.rsi_overbought_range,
             "atr_volatility_ratio": self.atr_volatility_ratio,
             "fib_range_target": self.fib_range_target,
             "trend_min_confluence": self.trend_min_confluence,
-            "trend_rsi_filter_enabled": self.trend_rsi_filter_enabled,
             "partial_exit_at_1r": self.partial_exit_at_1r,
             "partial_exit_pct": self.partial_exit_pct,
             "atr_trail_multiplier": self.atr_trail_multiplier,
             # REGIME-ADAPTIVE V2 ENHANCED PARAMETERS
             "use_adx_slope_rising": self.use_adx_slope_rising,
-            "use_rsi_range": self.use_rsi_range,
-            "rsi_period_range": self.rsi_period_range,
-            "use_bollinger_range": self.use_bollinger_range,
-            "bb_period_range": self.bb_period_range,
-            "bb_std_range": self.bb_std_range,
-            "use_rsi_trend": self.use_rsi_trend,
-            "rsi_trend_overbought": self.rsi_trend_overbought,
-            "rsi_trend_oversold": self.rsi_trend_oversold,
             "use_fib_0786_only": self.use_fib_0786_only,
             "use_liquidity_sweep_required": self.use_liquidity_sweep_required,
             "use_market_structure_bos_only": self.use_market_structure_bos_only,
