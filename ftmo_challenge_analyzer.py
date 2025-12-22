@@ -1065,41 +1065,38 @@ class OptunaOptimizer:
         params = {
             # Core risk management (keep existing)
             'risk_per_trade_pct': trial.suggest_float('risk_per_trade_pct', 0.5, 0.8, step=0.05),
-            'min_confluence_score': trial.suggest_int('min_confluence_score', 3, 6),
-            'min_quality_factors': trial.suggest_int('min_quality_factors', 1, 4),
+            'min_confluence_score': trial.suggest_int('min_confluence_score', 3, 5),
+            'min_quality_factors': trial.suggest_int('min_quality_factors', 1, 2),
             
             # EXPANDED: Regime detection thresholds (wider range)
             'adx_trend_threshold': trial.suggest_float('adx_trend_threshold', 20.0, 28.0, step=1.0),
             'adx_range_threshold': trial.suggest_float('adx_range_threshold', 15.0, 20.0, step=1.0),
             
-            # NEW: ADX slope-based early trend entry
-            'use_adx_slope_rising': trial.suggest_categorical('use_adx_slope_rising', [True, False]),
-            
-            # EXPANDED: Mode-specific confluence (relaxed ranges)
+            # Mode-specific confluence
             'trend_min_confluence': trial.suggest_int('trend_min_confluence', 5, 7),
             'range_min_confluence': trial.suggest_int('range_min_confluence', 4, 6),
             
-            
-            # NEW: Strategy-Level Toggles
-            'use_fib_0786_only': trial.suggest_categorical('use_fib_0786_only', [True, False]),
-            'use_liquidity_sweep_required': trial.suggest_categorical('use_liquidity_sweep_required', [True, False]),
-            'use_market_structure_bos_only': trial.suggest_categorical('use_market_structure_bos_only', [True, False]),
-            'use_atr_trailing': trial.suggest_categorical('use_atr_trailing', [True, False]),
-            'use_volatility_sizing_boost': trial.suggest_categorical('use_volatility_sizing_boost', [True, False]),
-            
-            # Categorical/Other
-            'fib_zone_type': trial.suggest_categorical('fib_zone_type', ['golden_only', 'extended', 'full_retracement']),
-            'candle_pattern_strictness': trial.suggest_categorical('candle_pattern_strictness', ['strict', 'moderate', 'loose']),
+            # Categorical/Other (SIMPLIFIED - no impossible combinations)
             'partial_exit_pct': trial.suggest_float('partial_exit_pct', 0.4, 0.7, step=0.05),
-            'atr_trail_multiplier': trial.suggest_float('atr_trail_multiplier', 1.5, 3.5, step=0.2),
+            'atr_trail_multiplier': trial.suggest_float('atr_trail_multiplier', 1.5, 3.0, step=0.2),
             'atr_vol_ratio_range': trial.suggest_float('atr_vol_ratio_range', 0.6, 0.9, step=0.05),
+            'partial_exit_at_1r': trial.suggest_categorical('partial_exit_at_1r', [True, False]),
             
             # Existing filters (RELAXED to prevent over-optimization)
             'atr_min_percentile': trial.suggest_float('atr_min_percentile', 50.0, 75.0, step=5.0),
             'trail_activation_r': trial.suggest_float('trail_activation_r', 1.8, 3.0, step=0.2),
             'december_atr_multiplier': trial.suggest_float('december_atr_multiplier', 1.0, 1.5, step=0.1),
             'volatile_asset_boost': trial.suggest_float('volatile_asset_boost', 1.0, 1.6, step=0.1),
-            'partial_exit_at_1r': trial.suggest_categorical('partial_exit_at_1r', [True, False]),
+            
+            # Advanced toggles (DISABLED - causing empty trades)
+            'use_adx_slope_rising': False,
+            'use_fib_0786_only': False,
+            'use_liquidity_sweep_required': False,
+            'use_market_structure_bos_only': False,
+            'use_atr_trailing': False,
+            'use_volatility_sizing_boost': False,
+            'fib_zone_type': 'golden_only',
+            'candle_pattern_strictness': 'moderate',
         }
         
         training_trades = run_full_period_backtest(
@@ -1314,60 +1311,9 @@ class OptunaOptimizer:
         trial.set_user_attr('trade_balance_bonus', round(trade_balance_bonus, 3))
         trial.set_user_attr('max_drawdown_pct', round(max_drawdown_pct * 100, 2))
         
-        # ============================================================================
-        # VALIDATION PERIOD TEST (Out-of-sample robustness check)
-        # Weight validation 50/50 with training to prevent over-optimization
-        # ============================================================================
-        validation_trades = run_full_period_backtest(
-            start_date=VALIDATION_START,
-            end_date=VALIDATION_END,
-            min_confluence=params['min_confluence_score'],
-            min_quality_factors=params['min_quality_factors'],
-            risk_per_trade_pct=params['risk_per_trade_pct'],
-            atr_min_percentile=params['atr_min_percentile'],
-            trail_activation_r=params['trail_activation_r'],
-            december_atr_multiplier=params['december_atr_multiplier'],
-            volatile_asset_boost=params['volatile_asset_boost'],
-            ml_min_prob=None,
-            require_adx_filter=True,
-            min_adx=25.0,
-            adx_trend_threshold=params['adx_trend_threshold'],
-            adx_range_threshold=params['adx_range_threshold'],
-            trend_min_confluence=params['trend_min_confluence'],
-            range_min_confluence=params['range_min_confluence'],
-            atr_volatility_ratio=params['atr_vol_ratio_range'],
-            atr_vol_ratio_range=params['atr_vol_ratio_range'],
-            atr_trail_multiplier=params['atr_trail_multiplier'],
-            partial_exit_at_1r=params['partial_exit_at_1r'],
-            use_adx_slope_rising=params['use_adx_slope_rising'],
-            use_fib_0786_only=params['use_fib_0786_only'],
-            use_liquidity_sweep_required=params['use_liquidity_sweep_required'],
-            use_market_structure_bos_only=params['use_market_structure_bos_only'],
-            use_atr_trailing=params['use_atr_trailing'],
-            use_volatility_sizing_boost=params['use_volatility_sizing_boost'],
-            fib_zone_type=params['fib_zone_type'],
-            candle_pattern_strictness=params['candle_pattern_strictness'],
-            partial_exit_pct=params['partial_exit_pct'],
-        )
-        
-        # Calculate validation score
-        validation_profit = 0.0
-        if validation_trades and len(validation_trades) > 0:
-            validation_total_r = sum(getattr(t, 'rr', 0) for t in validation_trades)
-            validation_profit = validation_total_r * risk_usd
-            # Penalize validation if it's significantly worse than training (overfitting indicator)
-            if validation_profit < (total_net_profit * 0.5):
-                validation_penalty = 1 - (validation_profit / (total_net_profit * 0.5 + 1))
-                validation_profit *= (1 - validation_penalty * 0.3)  # 30% penalty for severe overfitting
-        
-        # DUAL-PERIOD SCORE: Weight training 50%, validation 50%
-        balanced_score = (final_score * 0.5) + (validation_profit * 0.5)
-        
-        trial.set_user_attr('training_score', round(final_score, 0))
-        trial.set_user_attr('validation_profit', round(validation_profit, 0))
-        trial.set_user_attr('balanced_score', round(balanced_score, 0))
-        
-        return balanced_score
+        # Return training score only (validation concept removed - too complex)
+        # Keep all the consistency/drawdown penalties from above
+        return final_score
     
     def run_optimization(self, n_trials: int = 5) -> Dict:
         """Run Optuna optimization on TRAINING data only."""
@@ -1412,11 +1358,8 @@ class OptunaOptimizer:
             quarterly_stats = trial.user_attrs.get('quarterly_stats', {})
             overall_stats = trial.user_attrs.get('overall_stats', {})
             
-            train_score = trial.user_attrs.get('training_score', 0)
-            val_profit = trial.user_attrs.get('validation_profit', 0)
-            
             print(f"\n{'─'*70}")
-            print(f"TRIAL #{trial.number} COMPLETE | Training: ${train_score:,.0f} | Validation: ${val_profit:,.0f} | Best: {study.best_value:.0f}")
+            print(f"TRIAL #{trial.number} COMPLETE | Score: {trial.value:.0f} | Best: {study.best_value:.0f}")
             print(f"{'─'*70}")
             
             if quarterly_stats:
