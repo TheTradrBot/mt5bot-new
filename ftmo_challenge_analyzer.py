@@ -732,7 +732,6 @@ def run_full_period_backtest(
                 rsi_trend_overbought=rsi_trend_overbought,
                 rsi_trend_oversold=rsi_trend_oversold,
                 use_fib_0786_only=use_fib_0786_only,
-                use_liquidity_sweep_required=use_liquidity_sweep_required,
                 use_market_structure_bos_only=use_market_structure_bos_only,
                 use_atr_trailing=use_atr_trailing,
                 use_volatility_sizing_boost=use_volatility_sizing_boost,
@@ -1062,33 +1061,23 @@ class OptunaOptimizer:
         # ============================================================================
         # REGIME-ADAPTIVE V2 EXPANDED PARAMETER SEARCH SPACE (20+ Parameters)
         # ============================================================================
+        # RESTORE TO WORKING ORIGINAL PARAMETERS (621 trials worked with these)
         params = {
-            # Core risk management (keep existing)
             'risk_per_trade_pct': trial.suggest_float('risk_per_trade_pct', 0.5, 0.8, step=0.05),
-            'min_confluence_score': trial.suggest_int('min_confluence_score', 3, 5),
-            'min_quality_factors': trial.suggest_int('min_quality_factors', 1, 2),
-            
-            # EXPANDED: Regime detection thresholds (wider range)
+            'min_confluence_score': trial.suggest_int('min_confluence_score', 3, 6),
+            'min_quality_factors': trial.suggest_int('min_quality_factors', 1, 4),
             'adx_trend_threshold': trial.suggest_float('adx_trend_threshold', 20.0, 28.0, step=1.0),
             'adx_range_threshold': trial.suggest_float('adx_range_threshold', 15.0, 20.0, step=1.0),
-            
-            # Mode-specific confluence
             'trend_min_confluence': trial.suggest_int('trend_min_confluence', 5, 7),
             'range_min_confluence': trial.suggest_int('range_min_confluence', 4, 6),
-            
-            # Categorical/Other (SIMPLIFIED - no impossible combinations)
             'partial_exit_pct': trial.suggest_float('partial_exit_pct', 0.4, 0.7, step=0.05),
-            'atr_trail_multiplier': trial.suggest_float('atr_trail_multiplier', 1.5, 3.0, step=0.2),
+            'atr_trail_multiplier': trial.suggest_float('atr_trail_multiplier', 1.5, 3.5, step=0.2),
             'atr_vol_ratio_range': trial.suggest_float('atr_vol_ratio_range', 0.6, 0.9, step=0.05),
             'partial_exit_at_1r': trial.suggest_categorical('partial_exit_at_1r', [True, False]),
-            
-            # Existing filters (RELAXED to prevent over-optimization)
-            'atr_min_percentile': trial.suggest_float('atr_min_percentile', 50.0, 75.0, step=5.0),
-            'trail_activation_r': trial.suggest_float('trail_activation_r', 1.8, 3.0, step=0.2),
-            'december_atr_multiplier': trial.suggest_float('december_atr_multiplier', 1.0, 1.5, step=0.1),
-            'volatile_asset_boost': trial.suggest_float('volatile_asset_boost', 1.0, 1.6, step=0.1),
-            
-            # Advanced toggles (DISABLED)
+            'atr_min_percentile': trial.suggest_float('atr_min_percentile', 60.0, 85.0, step=5.0),
+            'trail_activation_r': trial.suggest_float('trail_activation_r', 1.8, 3.4, step=0.2),
+            'december_atr_multiplier': trial.suggest_float('december_atr_multiplier', 1.3, 1.8, step=0.1),
+            'volatile_asset_boost': trial.suggest_float('volatile_asset_boost', 1.3, 2.0, step=0.1),
             'use_adx_slope_rising': False,
             'use_fib_0786_only': False,
             'use_market_structure_bos_only': False,
