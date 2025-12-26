@@ -55,6 +55,15 @@ from config import FOREX_PAIRS, METALS, INDICES, CRYPTO_ASSETS
 from tradr.risk.position_sizing import calculate_lot_size, get_contract_specs
 from params.params_loader import save_optimized_params
 
+# Professional Quant Suite Integration
+from professional_quant_suite import (
+    RiskMetrics,
+    calculate_risk_metrics,
+    WalkForwardTester,
+    ParameterSensitivityAnalyzer,
+    generate_professional_report,
+)
+
 OUTPUT_DIR = Path("ftmo_analysis_output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -1769,6 +1778,60 @@ def main():
     print("UPDATING DOCUMENTATION")
     print(f"{'='*80}")
     update_readme_documentation()
+    
+    # ============================================================================
+    # PROFESSIONAL QUANTITATIVE ANALYSIS SUITE
+    # ============================================================================
+    print(f"\n{'='*80}")
+    print("PROFESSIONAL QUANTITATIVE ANALYSIS")
+    print(f"{'='*80}\n")
+    
+    # Risk Metrics Calculation
+    training_risk_metrics = calculate_risk_metrics(training_trades, best_params.get('risk_per_trade_pct', 0.5))
+    validation_risk_metrics = calculate_risk_metrics(validation_trades, best_params.get('risk_per_trade_pct', 0.5))
+    full_risk_metrics = calculate_risk_metrics(full_year_trades, best_params.get('risk_per_trade_pct', 0.5))
+    
+    print("Risk Metrics (Sharpe, Sortino, Calmar Ratios):")
+    print(f"  Training:   Sharpe={training_risk_metrics.sharpe_ratio:+.2f}  Sortino={training_risk_metrics.sortino_ratio:+.2f}  Calmar={training_risk_metrics.calmar_ratio:+.2f}")
+    print(f"  Validation: Sharpe={validation_risk_metrics.sharpe_ratio:+.2f}  Sortino={validation_risk_metrics.sortino_ratio:+.2f}  Calmar={validation_risk_metrics.calmar_ratio:+.2f}")
+    print(f"  Full:       Sharpe={full_risk_metrics.sharpe_ratio:+.2f}  Sortino={full_risk_metrics.sortino_ratio:+.2f}  Calmar={full_risk_metrics.calmar_ratio:+.2f}")
+    print(f"\n  IS-OOS Degradation: {training_risk_metrics.sharpe_ratio - validation_risk_metrics.sharpe_ratio:+.2f} (Sharpe)")
+    
+    # Walk-Forward Testing
+    print(f"\n  Walk-Forward Robustness Testing...")
+    try:
+        wf_tester = WalkForwardTester(
+            all_trades=full_year_trades,
+            start_date=FULL_PERIOD_START,
+            end_date=FULL_PERIOD_END,
+            train_months=12,
+            validate_months=3,
+            rolling=True
+        )
+        wf_results = wf_tester.analyze_all_windows(best_params.get('risk_per_trade_pct', 0.5))
+        
+        print(f"  Windows: {wf_results['total_windows']}")
+        print(f"  Avg Sharpe Degradation: {wf_results['avg_sharpe_degradation']:+.2f}")
+        print(f"  Std Dev Degradation: {wf_results['std_sharpe_degradation']:.2f}")
+        print(f"  Avg Return Degradation: {wf_results['avg_return_degradation']:+.2f}%")
+    except Exception as e:
+        print(f"  [!] Walk-forward analysis skipped: {e}")
+        wf_results = {'total_windows': 0, 'avg_sharpe_degradation': 0, 'std_sharpe_degradation': 0}
+    
+    # Generate Professional Report
+    print(f"\n  Generating professional report...")
+    try:
+        report_text = generate_professional_report(
+            best_params=best_params,
+            training_metrics=training_risk_metrics,
+            validation_metrics=validation_risk_metrics,
+            full_metrics=full_risk_metrics,
+            walk_forward_results=wf_results,
+            output_file=OUTPUT_DIR / "professional_backtest_report.txt"
+        )
+        print(f"  ✓ Report saved to: ftmo_analysis_output/professional_backtest_report.txt")
+    except Exception as e:
+        print(f"  [!] Report generation failed: {e}")
     
     print(f"\n{'='*80}")
     print("FINAL SUMMARY")
