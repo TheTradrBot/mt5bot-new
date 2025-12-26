@@ -13,4 +13,3 @@ All trades from the final backtest are exported to:
 Parameters are saved to `params/current_params.json`
 
 Optimization is resumable and can be checked with: `python ftmo_challenge_analyzer.py --status`
-

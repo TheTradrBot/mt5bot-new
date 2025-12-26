@@ -1,0 +1,72 @@
+================================================================================
+FTMO CHALLENGE ANALYZER - SUMMARY REPORT
+Generated: 2025-12-26 13:36:53
+================================================================================
+
+OPTIMIZATION RESULTS
+----------------------------------------
+Best Score: -5000.00
+Trials This Session: 1
+Total Trials: 4
+
+BEST PARAMETERS
+----------------------------------------
+  adx_range_threshold: 11.0000
+  adx_trend_threshold: 20.0000
+  atr_min_percentile: 65.0000
+  atr_trail_multiplier: 3.2000
+  atr_vol_ratio_range: 0.8000
+  december_atr_multiplier: 1.2000
+  min_confluence_score: 4
+  min_quality_factors: 2
+  partial_exit_at_1r: True
+  partial_exit_pct: 0.8000
+  range_min_confluence: 2
+  risk_per_trade_pct: 0.5000
+  trail_activation_r: 1.4000
+  trend_min_confluence: 3
+  volatile_asset_boost: 1.2000
+
+TRAINING PERIOD (2023-01-01 to 2024-09-30)
+----------------------------------------
+  Trades: 377
+  Total R: +58.70
+  Estimated Profit: $+58,700.56
+  Win Rate: 40.6%
+  Avg R per Trade: +0.156
+
+VALIDATION PERIOD (2024-10-01 to 2025-12-26)
+----------------------------------------
+  Trades: 322
+  Total R: +55.05
+  Estimated Profit: $+55,045.31
+  Win Rate: 39.4%
+  Avg R per Trade: +0.171
+
+FULL PERIOD (2023-2025)
+----------------------------------------
+  Trades: 770
+  Total R: +137.07
+  Estimated Profit: $+137,065.15
+  Win Rate: 40.6%
+  Avg R per Trade: +0.178
+
+QUARTERLY BREAKDOWN
+----------------------------------------
+  2023_Q1: 17 trades, +8.6R, 53% win rate, $+8,640.13
+  2023_Q2: 30 trades, +2.3R, 40% win rate, $+2,339.53
+  2023_Q3: 68 trades, +27.1R, 50% win rate, $+27,094.63
+  2023_Q4: 62 trades, +13.0R, 42% win rate, $+12,979.37
+  2024_Q1: 42 trades, +9.0R, 40% win rate, $+8,971.28
+  2024_Q2: 79 trades, +33.4R, 49% win rate, $+33,414.59
+  2024_Q3: 114 trades, -17.8R, 30% win rate, $-17,760.93
+  2024_Q4: 72 trades, +16.5R, 43% win rate, $+16,480.97
+  2025_Q1: 107 trades, -9.4R, 28% win rate, $-9,383.24
+  2025_Q2: 99 trades, +54.0R, 55% win rate, $+53,966.38
+  2025_Q3: 12 trades, +3.3R, 42% win rate, $+3,331.57
+  2025_Q4: 61 trades, -8.5R, 30% win rate, $-8,458.16
+
+TOTAL PROFIT (Full Period 2023-2025): $+131,616.12
+================================================================================
+End of Summary
+================================================================================

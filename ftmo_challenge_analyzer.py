@@ -625,6 +625,7 @@ def run_full_period_backtest(
     # ============================================================================
     # REGIME-ADAPTIVE V2 PARAMETERS
     # ============================================================================
+    use_adx_regime_filter: bool = False,  # DISABLED: Set to True to enable ADX regime filtering
     adx_trend_threshold: float = 25.0,  # ADX level for Trend Mode
     adx_range_threshold: float = 20.0,  # ADX level for Range Mode
     trend_min_confluence: int = 6,  # Min confluence for trend mode
@@ -687,10 +688,12 @@ def run_full_period_backtest(
                 daily_candles=d1_candles,
                 adx_trend_threshold=adx_trend_threshold,
                 adx_range_threshold=adx_range_threshold,
-                use_adx_slope_rising=use_adx_slope_rising
+                use_adx_slope_rising=use_adx_slope_rising,
+                use_adx_regime_filter=use_adx_regime_filter  # Pass ADX filter toggle
             )
             
-            if regime_info['mode'] == 'Transition':
+            # Only skip Transition mode if ADX filter is enabled
+            if use_adx_regime_filter and regime_info['mode'] == 'Transition':
                 continue
             
             if regime_info['mode'] == 'Trend':
@@ -713,6 +716,7 @@ def run_full_period_backtest(
                 volatile_asset_boost=volatile_asset_boost,
                 adx_trend_threshold=adx_trend_threshold,
                 adx_range_threshold=adx_range_threshold,
+                use_adx_regime_filter=use_adx_regime_filter,  # Pass ADX filter toggle to params
             )
             
             trades = simulate_trades(
@@ -1081,6 +1085,7 @@ class OptunaOptimizer:
             ml_min_prob=None,
             require_adx_filter=True,
             min_adx=25.0,
+            use_adx_regime_filter=False,  # DISABLED: ADX regime filtering disabled for now
             adx_trend_threshold=params['adx_trend_threshold'],
             adx_range_threshold=params['adx_range_threshold'],
             trend_min_confluence=params['trend_min_confluence'],
@@ -1155,26 +1160,71 @@ class OptunaOptimizer:
         })
         
         # ============================================================================
-        # REGIME-ADAPTIVE V2: NEW SCORING FORMULA
-        # Focuses on consistency, drawdown control, and balanced trading activity
+        # PROFESSIONAL SCORING FORMULA V3
+        # Multi-objective optimization using industry-standard metrics
         # ============================================================================
         
-        # Calculate quarterly profits and trade counts
+        # Extract risk percentage from params
+        risk_pct = params['risk_per_trade_pct']
+        
+        # Calculate quarterly profits, trade counts, and winning trades
         quarterly_profits = {}  # Q -> profit in USD
         quarterly_trade_counts = {}  # Q -> number of trades
+        quarterly_winning_trades = {}  # Q -> number of winning trades
         
         for q in TRAINING_QUARTERS.keys():
             q_r = quarterly_r.get(q, 0.0)
             q_profit = q_r * risk_usd
             q_count = len(quarterly_trades.get(q, []))
+            q_wins = sum(1 for t in quarterly_trades.get(q, []) if getattr(t, 'rr', 0) > 0)
             quarterly_profits[q] = q_profit
             quarterly_trade_counts[q] = q_count
+            quarterly_winning_trades[q] = q_wins
         
-        # Calculate max drawdown in R terms
+        trades_list = training_trades  # Alias for consistency
+        
+        # ============================================================================
+        # COMPONENT 1: PROFIT FACTOR (most important for profitability)
+        # Profit Factor = Gross Profit / Gross Loss
+        # Target: > 1.5 is good, > 2.0 is excellent
+        # ============================================================================
+        gross_profit = sum(getattr(t, 'rr', 0) for t in trades_list if getattr(t, 'rr', 0) > 0)
+        gross_loss = abs(sum(getattr(t, 'rr', 0) for t in trades_list if getattr(t, 'rr', 0) < 0))
+        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else gross_profit
+        
+        # ============================================================================
+        # COMPONENT 2: SHARPE RATIO (risk-adjusted returns)
+        # Using professional_quant_suite for institutional-grade calculation
+        # Target: > 0.5 is acceptable, > 1.0 is good, > 2.0 is excellent
+        # ============================================================================
+        risk_metrics = calculate_risk_metrics(
+            trades=trades_list,
+            risk_per_trade_pct=risk_pct,
+            account_size=ACCOUNT_SIZE,
+            trading_days_per_year=252.0
+        )
+        sharpe_ratio = risk_metrics.sharpe_ratio
+        sortino_ratio = risk_metrics.sortino_ratio
+        
+        # ============================================================================
+        # COMPONENT 3: EXPECTANCY (average R per trade)
+        # E = (Win% × Avg Win) - (Loss% × Avg Loss)
+        # Target: > 0.3R per trade is good
+        # ============================================================================
+        avg_win = (gross_profit / wins) if wins > 0 else 0
+        losses = total_trades - wins
+        avg_loss = (gross_loss / losses) if losses > 0 else 0
+        expectancy = (overall_win_rate / 100 * avg_win) - ((1 - overall_win_rate / 100) * avg_loss)
+        
+        # ============================================================================
+        # COMPONENT 4: DRAWDOWN RISK (FTMO compliance critical)
+        # Max DD in R terms, scaled to account percentage
+        # Target: < 10% of account
+        # ============================================================================
         max_dd_r = 0.0
         equity = 0.0
         peak = 0.0
-        for t in training_trades:
+        for t in trades_list:
             equity += getattr(t, 'rr', 0)
             if equity > peak:
                 peak = equity
@@ -1182,150 +1232,117 @@ class OptunaOptimizer:
             if dd > max_dd_r:
                 max_dd_r = dd
         
-        # Total net profit in USD
-        total_net_profit = total_r * risk_usd
-        
-        # ----------------------------------------------------------------------------
-        # CONSISTENCY BONUS CALCULATION
-        # Rewards consistent quarterly performance across all training quarters
-        # Penalizes quarters with low profit, rewards all-positive quarters
-        # ----------------------------------------------------------------------------
-        min_quarterly_profit = min(quarterly_profits.values()) if quarterly_profits else 0
-        consistency_bonus = 1.0
-        
-        # Penalty for low minimum quarter (scale down if below $15,000)
-        if min_quarterly_profit < 15000:
-            consistency_bonus -= 0.2 * max(0, (15000 - min_quarterly_profit) / 15000)
-        
-        # Bonus for all positive quarters (major consistency indicator)
-        if all(p >= 0 for p in quarterly_profits.values()):
-            consistency_bonus += 0.3
-        
-        # ----------------------------------------------------------------------------
-        # DRAWDOWN PENALTY
-        # Severe penalty for drawdowns exceeding 10% of account
-        # Critical for FTMO challenge compliance (5% daily, 10% total max)
-        # ----------------------------------------------------------------------------
-        # Convert max drawdown in R to percentage of account
-        # max_dd_r is in R units, need to convert to account percentage
         max_drawdown_pct = (max_dd_r * risk_usd) / ACCOUNT_SIZE if ACCOUNT_SIZE > 0 else 0
         
+        # ============================================================================
+        # COMPONENT 5: CONSISTENCY SCORE
+        # Count negative quarters and severely underperforming quarters
+        # ============================================================================
+        negative_quarter_count = sum(1 for r in quarterly_r.values() if r < -5.0)  # Only count significantly negative
+        weak_quarter_count = sum(1 for r in quarterly_r.values() if -5.0 <= r < 0)  # Slightly negative
+        zero_trade_quarters = sum(1 for c in quarterly_trade_counts.values() if c == 0)
+        
+        # ============================================================================
+        # MULTI-OBJECTIVE SCORING FORMULA V4
+        # Combines: Profit, Sharpe Ratio, Win Rate, Consistency
+        # All components normalized to similar scales for balanced optimization
+        # ============================================================================
+        
+        # Base score: Total R (simple and interpretable)
+        base_score = total_r
+        
+        # Sharpe Ratio Bonus: Reward risk-adjusted returns (NEW!)
+        # Scaled to contribute 10-30 points at good levels
+        sharpe_bonus = 0.0
+        if sharpe_ratio >= 2.0:
+            sharpe_bonus = 30.0   # Exceptional risk-adjusted returns
+        elif sharpe_ratio >= 1.5:
+            sharpe_bonus = 25.0   # Excellent
+        elif sharpe_ratio >= 1.0:
+            sharpe_bonus = 20.0   # Good
+        elif sharpe_ratio >= 0.5:
+            sharpe_bonus = 10.0   # Acceptable
+        elif sharpe_ratio >= 0.0:
+            sharpe_bonus = 5.0 * sharpe_ratio  # Proportional for 0-0.5
+        else:
+            sharpe_bonus = 10.0 * sharpe_ratio  # Penalty for negative Sharpe
+        
+        # Profit Factor Bonus: Reward PF > 1.0, strong bonus for PF > 1.5
+        pf_bonus = 0.0
+        if profit_factor >= 2.0:
+            pf_bonus = 20.0  # Excellent PF
+        elif profit_factor >= 1.5:
+            pf_bonus = 10.0  # Good PF
+        elif profit_factor >= 1.2:
+            pf_bonus = 5.0   # Acceptable PF
+        elif profit_factor < 1.0:
+            pf_bonus = -10.0 * (1.0 - profit_factor)  # Penalty for losing strategy
+        
+        # Win Rate Bonus: Reward WR > 45%
+        wr_bonus = 0.0
+        if overall_win_rate >= 55:
+            wr_bonus = 15.0
+        elif overall_win_rate >= 50:
+            wr_bonus = 10.0
+        elif overall_win_rate >= 45:
+            wr_bonus = 5.0
+        elif overall_win_rate < 35:
+            wr_bonus = -5.0  # Penalty for very low win rate
+        
+        # Drawdown Penalty: Penalize excessive drawdowns (FTMO critical)
         dd_penalty = 0.0
-        if max_drawdown_pct > 0.10:
-            # 40% penalty for each 1% over 10% threshold
-            # E.g., 15% drawdown = 0.4 * (0.15-0.10) = 0.02 penalty -> 98% multiplier
-            dd_penalty = 0.4 * (max_drawdown_pct - 0.10)
+        if max_drawdown_pct > 0.10:  # Over 10% account drawdown
+            dd_penalty = (max_drawdown_pct - 0.10) * 150  # 1.5 points per 1% over threshold
+        elif max_drawdown_pct > 0.08:  # Warning zone
+            dd_penalty = (max_drawdown_pct - 0.08) * 50
         
-        # CRITICAL: QUARTERLY POSITIVITY REQUIREMENT
-        # VERY HEAVY PENALTY for ANY quarter with negative R in training period
-        # This is the #1 goal: every quarter must be positive or near-zero
-        # ----------------------------------------------------------------------------
-        negative_quarter_count = 0
-        negative_quarters_list = []
-        for q, r in quarterly_r.items():
-            if r < -1.0:  # Allow small losses but penalize heavily for large negatives
-                negative_quarter_count += 1
-                negative_quarters_list.append(f"{q}({r:.1f}R)")
+        # Consistency Penalty: Penalize bad quarters (but don't kill the score)
+        consistency_penalty = 0.0
+        consistency_penalty += negative_quarter_count * 10.0  # Significant penalty for very bad quarters
+        consistency_penalty += weak_quarter_count * 3.0       # Smaller penalty for slightly negative
+        consistency_penalty += zero_trade_quarters * 5.0      # Penalty for inactive quarters
         
-        if negative_quarter_count > 0:
-            # MASSIVE penalty for each negative quarter (aim for all positive)
-            quarterly_penalty = -5000 * negative_quarter_count
-            trial.set_user_attr('negative_quarters', negative_quarters_list)
-            return quarterly_penalty
+        # Trade Count Bonus: Reward having enough trades for statistical significance
+        trade_bonus = 0.0
+        if 100 <= total_trades <= 300:
+            trade_bonus = 10.0  # Ideal range
+        elif 50 <= total_trades < 100:
+            trade_bonus = 5.0   # Acceptable
+        elif total_trades > 400:
+            trade_bonus = -5.0  # Too many trades (overtrading)
+        elif total_trades < 30:
+            trade_bonus = -10.0 # Not enough trades for confidence
         
-        # Bonus for all-positive quarters
-        if all(r >= 0 for r in quarterly_r.values()):
-            consistency_bonus += 0.5
+        # Calculate final composite score
+        final_score = (
+            base_score +          # Core profitability in R
+            sharpe_bonus +        # Risk-adjusted return quality (NEW!)
+            pf_bonus +            # Profit factor quality
+            wr_bonus +            # Win rate quality
+            trade_bonus -         # Trade frequency balance
+            dd_penalty -          # Drawdown risk
+            consistency_penalty   # Quarter consistency
+        )
         
-        # ----------------------------------------------------------------------------
-        # HARD FAIL: Reject strategies with severely undertrading quarters
-        # RELAXED: Only fail if MOST quarters are empty (avoiding bootstrap trap)
-        # Let strategy find ANY trades first, then optimize from there
-        # -----------------------------------------------------------------------
-        zero_trade_quarters = sum(1 for count in quarterly_trade_counts.values() if count == 0)
-        total_quarters = len(quarterly_trade_counts)
-        
-        # Only hard fail if ALL or nearly all quarters empty (avoid rejection loop)
-        if total_quarters > 0 and zero_trade_quarters >= total_quarters * 0.9:
-            trial.set_user_attr('hard_fail_reason', f'{zero_trade_quarters}/{total_quarters} quarters had ZERO trades')
-            return -100000.0
-        
-        # Penalty for zero-trade quarters but allow exploration
-        for q, count in quarterly_trade_counts.items():
-            if count == 0:
-                consistency_bonus -= 0.5  # Penalize but don't fail
-            if count < 4:
-                consistency_bonus -= 0.15
-        
-        # ----------------------------------------------------------------------------
-        # ENHANCED: Trade Balance Bonus for 12-35 trades per quarter
-        # More nuanced penalty system for undertrading and overtrading
-        # ----------------------------------------------------------------------------
-        trade_balance_bonus = 0.0
-        active_quarters = 0
-        for q, count in quarterly_trade_counts.items():
-            if count == 0:
-                trade_balance_bonus -= 0.25  # Strong penalty for zero-trade quarters
-            elif count < 12:
-                trade_balance_bonus -= 0.06 * (12 - count)  # Penalty for undertrading
-            elif count >= 12 and count <= 35:
-                trade_balance_bonus += 0.04  # Bonus for balanced trading
-                active_quarters += 1
-            else:  # count > 35
-                trade_balance_bonus -= 0.03 * (count - 35)  # Penalty for overtrading
-
-        # Additional penalty if any quarter has zero trades
-        if any(count == 0 for count in quarterly_trade_counts.values()):
-            trade_balance_bonus -= 0.2
-
-        trade_balance_bonus = max(-0.5, min(0.3, trade_balance_bonus))
-        
-        # ENHANCED: Consistency bonus with $20k minimum quarterly profit
-        if min_quarterly_profit >= 20000:
-            consistency_bonus += 0.4  # Strong bonus for $20k+ quarters
-        elif min_quarterly_profit >= 15000:
-            consistency_bonus += 0.2
-        elif min_quarterly_profit < 10000:
-            consistency_bonus -= 0.3  # Penalty for weak quarters
-        
-        # ----------------------------------------------------------------------------
-        # FINAL SCORE CALCULATION
-        # Combines profit with consistency, drawdown protection, and trade balance
-        # INCLUDES: Win rate bonuses for 55%+ and 60%+ quarters
-        # -----------------------------------------------------------------------
-        # Calculate win rate bonuses from quarterly trades
-        quarter_wr_bonus = 0
-        for q in quarterly_r.keys():
-            winning = quarterly_winning_trades.get(q, 0)
-            total = quarterly_trade_counts.get(q, 1)
-            if total > 0:
-                wr = winning / total
-                if wr >= 0.60:
-                    quarter_wr_bonus += 1000  # Strong bonus for 60%+ WR
-                elif wr >= 0.55:
-                    quarter_wr_bonus += 500   # Moderate bonus for 55%+ WR
-        
-        # Trade frequency bonus: reward 80-200 trades in training
-        trade_freq_bonus = 0.0
-        if 80 <= len(trades_list) <= 200:
-            trade_freq_bonus = 0.5
-        elif len(trades_list) > 250:
-            trade_freq_bonus = -0.3
-        
-        # Final score: net profit * consistency multipliers + win-rate bonuses
-        final_score = total_net_profit * (1 - dd_penalty) * consistency_bonus * (1 + trade_balance_bonus + trade_freq_bonus)
-        final_score += quarter_wr_bonus  # Add win-rate bonuses directly to score
-        
-        # Store additional regime-adaptive metrics for analysis
-        trial.set_user_attr('quarterly_profits', quarterly_profits)
-        trial.set_user_attr('quarterly_trade_counts', quarterly_trade_counts)
-        trial.set_user_attr('consistency_bonus', round(consistency_bonus, 3))
-        trial.set_user_attr('dd_penalty', round(dd_penalty, 3))
-        trial.set_user_attr('trade_balance_bonus', round(trade_balance_bonus, 3))
+        # Store ALL metrics for analysis and multi-objective selection
+        trial.set_user_attr('sharpe_ratio', round(sharpe_ratio, 3))
+        trial.set_user_attr('sortino_ratio', round(sortino_ratio, 3))
+        trial.set_user_attr('profit_factor', round(profit_factor, 3))
+        trial.set_user_attr('expectancy', round(expectancy, 3))
         trial.set_user_attr('max_drawdown_pct', round(max_drawdown_pct * 100, 2))
+        trial.set_user_attr('negative_quarters', negative_quarter_count)
+        trial.set_user_attr('total_r', round(total_r, 2))
+        trial.set_user_attr('win_rate', round(overall_win_rate, 2))
+        trial.set_user_attr('score_breakdown', {
+            'base_r': round(base_score, 2),
+            'sharpe_bonus': round(sharpe_bonus, 2),
+            'pf_bonus': round(pf_bonus, 2),
+            'wr_bonus': round(wr_bonus, 2),
+            'trade_bonus': round(trade_bonus, 2),
+            'dd_penalty': round(dd_penalty, 2),
+            'consistency_penalty': round(consistency_penalty, 2),
+        })
         
-        # Return training score only (validation concept removed - too complex)
-        # Keep all the consistency/drawdown penalties from above
         return final_score
     
     def run_optimization(self, n_trials: int = 5) -> Dict:
@@ -1609,7 +1626,142 @@ class OptunaOptimizer:
             'best_score': self.best_score,
             'n_trials': n_trials,
             'total_trials': len(study.trials),
+            'study': study,  # Return study for top 5 analysis
         }
+
+
+def validate_top_trials(study, top_n: int = 5) -> List[Dict]:
+    """
+    Run validation backtests on top N trials to find the best OOS performer.
+    This prevents overfitting by selecting based on validation performance.
+    
+    Works with both single-objective and multi-objective (NSGA-II) studies.
+    
+    Returns:
+        List of dicts with trial info and validation results, sorted by validation R
+    """
+    import optuna
+    
+    # Check if this is a multi-objective study
+    is_multi_objective = len(study.directions) > 1 if hasattr(study, 'directions') else False
+    
+    # Get all completed trials
+    completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    
+    if is_multi_objective:
+        # For multi-objective: filter trials with valid values tuple
+        completed_trials = [t for t in completed_trials if t.values is not None and len(t.values) >= 1]
+        if not completed_trials:
+            print("No completed trials to validate")
+            return []
+        # Use Pareto front trials, or sort by first objective (Total R)
+        try:
+            pareto_trials = study.best_trials
+            if len(pareto_trials) >= top_n:
+                sorted_trials = pareto_trials[:top_n]
+            else:
+                # Add more from sorted by Total R
+                non_pareto = [t for t in completed_trials if t not in pareto_trials]
+                non_pareto_sorted = sorted(non_pareto, key=lambda t: t.values[0], reverse=True)
+                sorted_trials = pareto_trials + non_pareto_sorted[:top_n - len(pareto_trials)]
+        except:
+            sorted_trials = sorted(completed_trials, key=lambda t: t.values[0], reverse=True)[:top_n]
+    else:
+        # For single-objective: filter and sort by value
+        completed_trials = [t for t in completed_trials if t.value is not None]
+        if not completed_trials:
+            print("No completed trials to validate")
+            return []
+        sorted_trials = sorted(completed_trials, key=lambda t: t.value, reverse=True)[:top_n]
+    
+    print(f"\n{'='*70}")
+    print(f"TOP {len(sorted_trials)} TRIALS - VALIDATION COMPARISON")
+    print(f"{'='*70}")
+    print(f"Running validation backtests to find best OOS performer...")
+    print(f"{'='*70}\n")
+    
+    validation_results = []
+    
+    for rank, trial in enumerate(sorted_trials, 1):
+        params = trial.params
+        
+        # Get training score (handle both single and multi-objective)
+        if is_multi_objective:
+            training_score = trial.values[0] if trial.values else 0  # Use Total R
+            score_display = f"R={training_score:+.1f}"
+        else:
+            training_score = trial.value if trial.value else 0
+            score_display = f"{training_score:,.0f}"
+        
+        print(f"[{rank}/{len(sorted_trials)}] Trial #{trial.number} (Training Score: {score_display})")
+        
+        # Run validation backtest
+        validation_trades = run_full_period_backtest(
+            start_date=VALIDATION_START,
+            end_date=VALIDATION_END,
+            min_confluence=params.get('min_confluence_score', 3),
+            min_quality_factors=params.get('min_quality_factors', 2),
+            risk_per_trade_pct=params.get('risk_per_trade_pct', 0.5),
+            atr_min_percentile=params.get('atr_min_percentile', 60.0),
+            trail_activation_r=params.get('trail_activation_r', 2.2),
+            december_atr_multiplier=params.get('december_atr_multiplier', 1.5),
+            volatile_asset_boost=params.get('volatile_asset_boost', 1.5),
+            ml_min_prob=None,
+            require_adx_filter=True,
+            use_adx_regime_filter=False,
+            adx_trend_threshold=params.get('adx_trend_threshold', 25.0),
+            adx_range_threshold=params.get('adx_range_threshold', 20.0),
+            trend_min_confluence=params.get('trend_min_confluence', 6),
+            range_min_confluence=params.get('range_min_confluence', 5),
+            atr_volatility_ratio=params.get('atr_vol_ratio_range', 0.8),
+            atr_trail_multiplier=params.get('atr_trail_multiplier', 1.5),
+            partial_exit_at_1r=params.get('partial_exit_at_1r', True),
+            partial_exit_pct=params.get('partial_exit_pct', 0.5),
+        )
+        
+        # Calculate validation metrics
+        val_r = sum(getattr(t, 'rr', 0) for t in validation_trades) if validation_trades else 0
+        val_trades = len(validation_trades) if validation_trades else 0
+        val_wins = sum(1 for t in validation_trades if getattr(t, 'rr', 0) > 0) if validation_trades else 0
+        val_wr = (val_wins / val_trades * 100) if val_trades > 0 else 0
+        
+        result = {
+            'trial_number': trial.number,
+            'training_score': training_score,
+            'params': params,
+            'validation_r': val_r,
+            'validation_trades': val_trades,
+            'validation_wins': val_wins,
+            'validation_wr': val_wr,
+            'validation_trade_objects': validation_trades,
+        }
+        validation_results.append(result)
+        
+        print(f"    Validation: {val_trades} trades, {val_r:+.1f}R, {val_wr:.1f}% WR")
+    
+    # Sort by validation R (best OOS performance)
+    validation_results.sort(key=lambda x: x['validation_r'], reverse=True)
+    
+    # Print comparison table
+    print(f"\n{'='*70}")
+    print(f"VALIDATION RANKING (Best OOS Performance)")
+    print(f"{'='*70}")
+    print(f"{'Rank':<6} {'Trial':<8} {'Train Score':>12} {'Val Trades':>12} {'Val R':>10} {'Val WR':>10}")
+    print(f"{'-'*70}")
+    
+    for rank, result in enumerate(validation_results, 1):
+        marker = " ★" if rank == 1 else ""
+        print(f"{rank:<6} #{result['trial_number']:<7} {result['training_score']:>12,.0f} {result['validation_trades']:>12} {result['validation_r']:>+10.1f} {result['validation_wr']:>9.1f}%{marker}")
+    
+    print(f"{'-'*70}")
+    
+    if validation_results:
+        best = validation_results[0]
+        print(f"\n🏆 BEST OOS PERFORMER: Trial #{best['trial_number']}")
+        print(f"   Training Score: {best['training_score']:,.0f}")
+        print(f"   Validation: {best['validation_r']:+.1f}R ({best['validation_trades']} trades, {best['validation_wr']:.1f}% WR)")
+    
+    return validation_results
 
 
 def generate_summary_txt(
@@ -1739,6 +1891,210 @@ def generate_summary_txt(
     return str(summary_filename)
 
 
+# ============================================================================
+# NSGA-II MULTI-OBJECTIVE OPTIMIZATION
+# Optimizes three objectives simultaneously: Total R, Sharpe Ratio, Win Rate
+# Uses Pareto frontier to find non-dominated solutions
+# ============================================================================
+
+MULTI_OBJECTIVE_DB = "sqlite:///multi_objective_study.db"
+MULTI_OBJECTIVE_STUDY_NAME = "ftmo_multi_objective_v1"
+
+
+def multi_objective_function(trial) -> Tuple[float, float, float]:
+    """
+    Multi-objective function for NSGA-II optimization.
+    Returns three objectives to maximize:
+    1. Total R (profitability)
+    2. Sharpe Ratio (risk-adjusted returns)
+    3. Win Rate (consistency)
+    
+    All three should be MAXIMIZED (Optuna NSGA-II handles this).
+    """
+    # Sample hyperparameters (same as single-objective)
+    params = {
+        'min_confluence_score': trial.suggest_int('min_confluence_score', 2, 6),
+        'min_quality_factors': trial.suggest_int('min_quality_factors', 1, 4),
+        'risk_per_trade_pct': trial.suggest_float('risk_per_trade_pct', 0.3, 0.6, step=0.05),
+        'atr_min_percentile': trial.suggest_float('atr_min_percentile', 40.0, 80.0, step=5.0),
+        'trail_activation_r': trial.suggest_float('trail_activation_r', 0.8, 2.0, step=0.2),
+        'december_atr_multiplier': trial.suggest_float('december_atr_multiplier', 1.0, 2.0, step=0.2),
+        'volatile_asset_boost': trial.suggest_float('volatile_asset_boost', 1.0, 1.5, step=0.1),
+        'adx_trend_threshold': trial.suggest_int('adx_trend_threshold', 15, 30),
+        'adx_range_threshold': trial.suggest_int('adx_range_threshold', 10, 25),
+        'trend_min_confluence': trial.suggest_int('trend_min_confluence', 2, 5),
+        'range_min_confluence': trial.suggest_int('range_min_confluence', 2, 5),
+        'atr_vol_ratio_range': trial.suggest_float('atr_vol_ratio_range', 0.5, 1.0, step=0.05),
+        'atr_trail_multiplier': trial.suggest_float('atr_trail_multiplier', 1.2, 3.5, step=0.2),
+        'partial_exit_at_1r': trial.suggest_categorical('partial_exit_at_1r', [True, False]),
+        'partial_exit_pct': trial.suggest_float('partial_exit_pct', 0.3, 0.8, step=0.05),
+    }
+    
+    risk_pct = params['risk_per_trade_pct']
+    
+    # Run training backtest
+    training_trades = run_full_period_backtest(
+        start_date=TRAINING_START,
+        end_date=TRAINING_END,
+        min_confluence=params['min_confluence_score'],
+        min_quality_factors=params['min_quality_factors'],
+        risk_per_trade_pct=risk_pct,
+        atr_min_percentile=params['atr_min_percentile'],
+        trail_activation_r=params['trail_activation_r'],
+        december_atr_multiplier=params['december_atr_multiplier'],
+        volatile_asset_boost=params['volatile_asset_boost'],
+        ml_min_prob=None,
+        require_adx_filter=True,
+        use_adx_regime_filter=False,
+        adx_trend_threshold=params['adx_trend_threshold'],
+        adx_range_threshold=params['adx_range_threshold'],
+        trend_min_confluence=params['trend_min_confluence'],
+        range_min_confluence=params['range_min_confluence'],
+        atr_volatility_ratio=params['atr_vol_ratio_range'],
+        atr_trail_multiplier=params['atr_trail_multiplier'],
+        partial_exit_at_1r=params['partial_exit_at_1r'],
+        partial_exit_pct=params['partial_exit_pct'],
+    )
+    
+    # Calculate objectives
+    if not training_trades or len(training_trades) < 10:
+        # Not enough trades - return bad values for all objectives
+        return (-1000.0, -10.0, 0.0)
+    
+    # Objective 1: Total R (profitability)
+    total_r = sum(getattr(t, 'rr', 0) for t in training_trades)
+    
+    # Objective 2: Sharpe Ratio (risk-adjusted returns)
+    risk_metrics = calculate_risk_metrics(
+        trades=training_trades,
+        risk_per_trade_pct=risk_pct,
+        account_size=ACCOUNT_SIZE,
+        trading_days_per_year=252.0
+    )
+    sharpe_ratio = risk_metrics.sharpe_ratio
+    
+    # Objective 3: Win Rate
+    wins = sum(1 for t in training_trades if getattr(t, 'rr', 0) > 0)
+    win_rate = (wins / len(training_trades) * 100) if training_trades else 0
+    
+    # Store additional metrics
+    trial.set_user_attr('total_trades', len(training_trades))
+    trial.set_user_attr('profit_factor', risk_metrics.profit_factor)
+    trial.set_user_attr('sortino_ratio', risk_metrics.sortino_ratio)
+    trial.set_user_attr('max_drawdown', risk_metrics.max_drawdown)
+    
+    return (total_r, sharpe_ratio, win_rate)
+
+
+def run_multi_objective_optimization(n_trials: int = 50) -> Dict:
+    """
+    Run NSGA-II multi-objective optimization.
+    
+    NSGA-II (Non-dominated Sorting Genetic Algorithm II) finds the Pareto frontier:
+    solutions where improving one objective would worsen another.
+    
+    Returns the best balanced solution from the Pareto frontier.
+    """
+    import optuna
+    from optuna.samplers import NSGAIISampler
+    
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
+    
+    print(f"\n{'='*70}")
+    print(f"NSGA-II MULTI-OBJECTIVE OPTIMIZATION")
+    print(f"{'='*70}")
+    print(f"Objectives: Maximize [Total R, Sharpe Ratio, Win Rate]")
+    print(f"Trials: {n_trials}")
+    print(f"Storage: {MULTI_OBJECTIVE_DB}")
+    print(f"{'='*70}\n")
+    
+    # Create multi-objective study with NSGA-II sampler
+    study = optuna.create_study(
+        directions=['maximize', 'maximize', 'maximize'],  # All three are maximized
+        study_name=MULTI_OBJECTIVE_STUDY_NAME,
+        storage=MULTI_OBJECTIVE_DB,
+        load_if_exists=True,
+        sampler=NSGAIISampler(seed=42)
+    )
+    
+    existing_trials = len(study.trials)
+    if existing_trials > 0:
+        print(f"Resuming study with {existing_trials} existing trials")
+    
+    def progress_callback(study, trial):
+        if trial.values:
+            total_r, sharpe, wr = trial.values
+            print(f"Trial #{trial.number}: R={total_r:+.1f}, Sharpe={sharpe:.2f}, WR={wr:.1f}%")
+    
+    # Run optimization
+    study.optimize(multi_objective_function, n_trials=n_trials, callbacks=[progress_callback])
+    
+    # Get Pareto front (non-dominated solutions)
+    pareto_trials = study.best_trials
+    
+    print(f"\n{'='*70}")
+    print(f"PARETO FRONTIER - {len(pareto_trials)} Non-Dominated Solutions")
+    print(f"{'='*70}")
+    print(f"{'Trial':<8} {'Total R':>10} {'Sharpe':>10} {'Win Rate':>10} {'Trades':>10}")
+    print(f"{'-'*70}")
+    
+    for trial in pareto_trials:
+        total_r, sharpe, wr = trial.values
+        trades = trial.user_attrs.get('total_trades', 0)
+        print(f"#{trial.number:<6} {total_r:>+10.1f} {sharpe:>10.2f} {wr:>9.1f}% {trades:>10}")
+    
+    # Select best balanced solution using weighted scoring
+    # Weights: Total R (40%), Sharpe (35%), Win Rate (25%)
+    best_trial = None
+    best_composite_score = -float('inf')
+    
+    for trial in pareto_trials:
+        total_r, sharpe, wr = trial.values
+        # Normalize and weight
+        r_score = total_r / 100  # Scale R to ~1.0 range for good strategies
+        sharpe_score = sharpe    # Already in ~0-2 range typically
+        wr_score = (wr - 40) / 20  # Scale WR from 40-60% to 0-1 range
+        
+        composite = 0.40 * r_score + 0.35 * sharpe_score + 0.25 * wr_score
+        
+        if composite > best_composite_score:
+            best_composite_score = composite
+            best_trial = trial
+    
+    if best_trial:
+        total_r, sharpe, wr = best_trial.values
+        print(f"\n🏆 BEST BALANCED SOLUTION: Trial #{best_trial.number}")
+        print(f"   Total R: {total_r:+.1f}")
+        print(f"   Sharpe: {sharpe:.2f}")
+        print(f"   Win Rate: {wr:.1f}%")
+        print(f"   Composite Score: {best_composite_score:.3f}")
+        
+        best_params = best_trial.params
+        
+        # Save best params
+        save_best_params_persistent(best_params)
+        
+        return {
+            'best_params': best_params,
+            'best_score': best_composite_score,
+            'pareto_trials': len(pareto_trials),
+            'total_r': total_r,
+            'sharpe': sharpe,
+            'win_rate': wr,
+            'study': study,
+            'n_trials': n_trials,
+            'total_trials': len(study.trials),
+        }
+    else:
+        print("\n⚠️ No valid solutions found on Pareto frontier")
+        return {
+            'best_params': {},
+            'best_score': 0,
+            'study': study,
+            'n_trials': n_trials,
+        }
+
+
 def main():
     """
     Professional FTMO Optimization Workflow with CLI support.
@@ -1751,6 +2107,7 @@ def main():
       python ftmo_challenge_analyzer.py              # Run/resume optimization (5 trials)
       python ftmo_challenge_analyzer.py --status     # Check progress without running
       python ftmo_challenge_analyzer.py --trials 100 # Run 100 trials
+      python ftmo_challenge_analyzer.py --multi      # Use NSGA-II multi-objective optimization
     """
     parser = argparse.ArgumentParser(
         description="FTMO Professional Optimization System - Resumable with ADX Filter"
@@ -1766,6 +2123,11 @@ def main():
         default=5,
         help="Number of optimization trials to run (default: 5)"
     )
+    parser.add_argument(
+        "--multi",
+        action="store_true",
+        help="Use NSGA-II multi-objective optimization (Profit + Sharpe + WinRate)"
+    )
     args = parser.parse_args()
     
     if args.status:
@@ -1773,6 +2135,7 @@ def main():
         return
     
     n_trials = args.trials
+    use_multi_objective = args.multi
     
     print(f"\n{'='*80}")
     print("FTMO PROFESSIONAL OPTIMIZATION SYSTEM - REGIME-ADAPTIVE V2")
@@ -1785,85 +2148,66 @@ def main():
     print(f"  TREND MODE:      ADX >= threshold (momentum following)")
     print(f"  RANGE MODE:      ADX < threshold (conservative mean reversion)")
     print(f"  TRANSITION:      NO ENTRIES (wait for regime confirmation)")
+    
+    if use_multi_objective:
+        print(f"\n🎯 MULTI-OBJECTIVE MODE: NSGA-II Pareto Optimization")
+        print(f"   Objectives: Total R, Sharpe Ratio, Win Rate (all maximized)")
+        print(f"   Sampler: NSGA-II (evolutionary algorithm)")
+    else:
+        print(f"\n📊 SINGLE-OBJECTIVE MODE: Composite Score Optimization")
+        print(f"   Score = R + Sharpe_bonus + PF_bonus + WR_bonus - penalties")
+    
     print(f"\nResumable: Study stored in {OPTUNA_DB_PATH}")
     print(f"{'='*80}\n")
     
-    optimizer = OptunaOptimizer()
-    results = optimizer.run_optimization(n_trials=n_trials)
+    # ============================================================================
+    # MULTI-OBJECTIVE OR SINGLE-OBJECTIVE OPTIMIZATION
+    # ============================================================================
+    if use_multi_objective:
+        results = run_multi_objective_optimization(n_trials=n_trials)
+        study = results.get('study')
+        best_params = results.get('best_params', {})
+    else:
+        optimizer = OptunaOptimizer()
+        results = optimizer.run_optimization(n_trials=n_trials)
+        study = results.get('study')
+        best_params = results.get('best_params', optimizer.best_params)
     
-    best_params = results['best_params']
+    # ============================================================================
+    # TOP 5 VALIDATION COMPARISON
+    # Run validation on top 5 trials to find best OOS performer
+    # This prevents overfitting by selecting based on validation performance
+    # ============================================================================
+    
+    if study:
+        top_5_results = validate_top_trials(study, top_n=5)
+        
+        if top_5_results:
+            # Use the best validation performer (not just best training score)
+            best_oos = top_5_results[0]
+            best_params = best_oos['params']
+            validation_trades = best_oos['validation_trade_objects']
+            
+            print(f"\n✅ Selected Trial #{best_oos['trial_number']} as FINAL (best OOS performance)")
+        else:
+            # Fallback to best training params
+            best_params = results['best_params']
+            validation_trades = []
+    else:
+        best_params = results['best_params']
+        validation_trades = []
     
     # INSTANTLY SAVE BEST PARAMS FOR LIVE BOT
     save_best_params_persistent(best_params)
     
-    print(f"\n{'='*80}")
-    print("=== TRAINING RESULTS (2023-01-01 to 2024-09-30) ===")
-    print(f"{'='*80}")
-    
-    training_trades = run_full_period_backtest(
-        start_date=TRAINING_START,
-        end_date=TRAINING_END,
-        min_confluence=best_params.get('min_confluence_score', 3),
-        min_quality_factors=best_params.get('min_quality_factors', 2),
-        risk_per_trade_pct=best_params.get('risk_per_trade_pct', 0.5),
-        atr_min_percentile=best_params.get('atr_min_percentile', 60.0),
-        trail_activation_r=best_params.get('trail_activation_r', 2.2),
-        december_atr_multiplier=best_params.get('december_atr_multiplier', 1.5),
-        volatile_asset_boost=best_params.get('volatile_asset_boost', 1.5),
-        ml_min_prob=None,
-        require_adx_filter=True,
-        adx_trend_threshold=best_params.get('adx_trend_threshold', 25.0),
-        adx_range_threshold=best_params.get('adx_range_threshold', 20.0),
-        trend_min_confluence=best_params.get('trend_min_confluence', 6),
-        range_min_confluence=best_params.get('range_min_confluence', 5),
-        rsi_oversold_range=best_params.get('rsi_oversold_range', 25.0),
-        rsi_overbought_range=best_params.get('rsi_overbought_range', 75.0),
-        atr_volatility_ratio=best_params.get('atr_volatility_ratio', 0.8),
-        atr_trail_multiplier=best_params.get('atr_trail_multiplier', 1.5),
-        partial_exit_at_1r=best_params.get('partial_exit_at_1r', True),
-    )
-    
-    training_results = print_period_results(
-        training_trades, "TRAINING RESULTS (2023-01-01 to 2024-09-30)",
-        TRAINING_START, TRAINING_END
-    )
-    
-    print(f"\n{'='*80}")
-    print(f"=== VALIDATION RESULTS (2024-10-01 to {VALIDATION_END.strftime('%Y-%m-%d')}) ===")
-    print(f"{'='*80}")
-    
-    validation_trades = run_full_period_backtest(
-        start_date=VALIDATION_START,
-        end_date=VALIDATION_END,
-        min_confluence=best_params.get('min_confluence_score', 3),
-        min_quality_factors=best_params.get('min_quality_factors', 2),
-        risk_per_trade_pct=best_params.get('risk_per_trade_pct', 0.5),
-        atr_min_percentile=best_params.get('atr_min_percentile', 60.0),
-        trail_activation_r=best_params.get('trail_activation_r', 2.2),
-        december_atr_multiplier=best_params.get('december_atr_multiplier', 1.5),
-        volatile_asset_boost=best_params.get('volatile_asset_boost', 1.5),
-        ml_min_prob=None,
-        require_adx_filter=True,
-        adx_trend_threshold=best_params.get('adx_trend_threshold', 25.0),
-        adx_range_threshold=best_params.get('adx_range_threshold', 20.0),
-        trend_min_confluence=best_params.get('trend_min_confluence', 6),
-        range_min_confluence=best_params.get('range_min_confluence', 5),
-        rsi_oversold_range=best_params.get('rsi_oversold_range', 25.0),
-        rsi_overbought_range=best_params.get('rsi_overbought_range', 75.0),
-        atr_volatility_ratio=best_params.get('atr_volatility_ratio', 0.8),
-        atr_trail_multiplier=best_params.get('atr_trail_multiplier', 1.5),
-        partial_exit_at_1r=best_params.get('partial_exit_at_1r', True),
-    )
-    
-    validation_results = print_period_results(
-        validation_trades, f"VALIDATION RESULTS (2024-10-01 to {VALIDATION_END.strftime('%Y-%m-%d')})",
-        VALIDATION_START, VALIDATION_END
-    )
+    # ============================================================================
+    # RUN FINAL FULL PERIOD BACKTEST (only once, with best OOS params)
+    # ============================================================================
     
     print(f"\n{'='*80}")
     print("=== FULL PERIOD FINAL RESULTS (2023-2025) ===")
     print(f"{'='*80}")
-    print("Running full period backtest with Regime-Adaptive V2...")
+    print("Running full period backtest with best OOS parameters...")
     print("December fully open for trading")
     
     full_year_trades = run_full_period_backtest(
@@ -1878,23 +2222,27 @@ def main():
         volatile_asset_boost=best_params.get('volatile_asset_boost', 1.5),
         ml_min_prob=None,
         require_adx_filter=True,
+        use_adx_regime_filter=False,
         adx_trend_threshold=best_params.get('adx_trend_threshold', 25.0),
         adx_range_threshold=best_params.get('adx_range_threshold', 20.0),
         trend_min_confluence=best_params.get('trend_min_confluence', 6),
         range_min_confluence=best_params.get('range_min_confluence', 5),
-        rsi_oversold_range=best_params.get('rsi_oversold_range', 25.0),
-        rsi_overbought_range=best_params.get('rsi_overbought_range', 75.0),
-        atr_volatility_ratio=best_params.get('atr_volatility_ratio', 0.8),
+        atr_volatility_ratio=best_params.get('atr_vol_ratio_range', 0.8),
         atr_trail_multiplier=best_params.get('atr_trail_multiplier', 1.5),
         partial_exit_at_1r=best_params.get('partial_exit_at_1r', True),
+        partial_exit_pct=best_params.get('partial_exit_pct', 0.5),
     )
+    
+    # Extract training trades from full period for reporting
+    training_trades = [t for t in full_year_trades if hasattr(t, 'entry_date') and 
+                       TRAINING_START <= (t.entry_date.replace(tzinfo=None) if hasattr(t.entry_date, 'replace') and t.entry_date.tzinfo else t.entry_date) <= TRAINING_END]
     
     risk_pct = best_params.get('risk_per_trade_pct', 0.5)
     
     # Export all three CSV files at the end
     print("\n📊 Exporting final CSV files...")
     export_trades_to_csv(training_trades, "all_trades_jan_dec_2024.csv", risk_pct)
-    export_trades_to_csv(validation_trades, "all_trades_2024_full.csv", risk_pct)
+    export_trades_to_csv(validation_trades if validation_trades else [], "all_trades_2024_full.csv", risk_pct)
     export_trades_to_csv(full_year_trades, "all_trades_2023_2025_full.csv", risk_pct)
     print("✅ All CSV files exported successfully\n")
     

@@ -102,10 +102,11 @@ class StrategyParams:
     
     structure_sl_lookback: int = 35
     
-    use_htf_filter: bool = True
-    use_structure_filter: bool = True
-    use_fib_filter: bool = True
-    use_confirmation_filter: bool = True
+    # DISABLED: All indicator filters temporarily disabled for baseline testing
+    use_htf_filter: bool = False
+    use_structure_filter: bool = False
+    use_fib_filter: bool = False
+    use_confirmation_filter: bool = False
     
     require_htf_alignment: bool = False
     require_confirmation_for_active: bool = False
@@ -124,25 +125,25 @@ class StrategyParams:
     tp4_close_pct: float = 0.20  # Close 20% at TP4
     tp5_close_pct: float = 0.45  # Close 45% at TP5
     
-    # Quantitative enhancement filters
-    use_atr_regime_filter: bool = True
+    # Quantitative enhancement filters - DISABLED for baseline testing
+    use_atr_regime_filter: bool = False
     atr_min_percentile: float = 60.0
-    use_zscore_filter: bool = True
+    use_zscore_filter: bool = False
     zscore_threshold: float = 1.5
-    use_pattern_filter: bool = True
+    use_pattern_filter: bool = False
     
-    # Blueprint V2 enhancements
-    use_mitigated_sr: bool = True  # Broken then retested SR zones
+    # Blueprint V2 enhancements - DISABLED for baseline testing
+    use_mitigated_sr: bool = False  # Broken then retested SR zones
     sr_proximity_pct: float = 0.02  # 1-2% proximity filter for SR entry
-    use_structural_framework: bool = True  # Ascending/descending channel detection
-    use_displacement_filter: bool = True  # Strong candles beyond structure
+    use_structural_framework: bool = False  # Ascending/descending channel detection
+    use_displacement_filter: bool = False  # Strong candles beyond structure
     displacement_atr_mult: float = 1.5  # Min ATR multiplier for displacement
-    use_candle_rejection: bool = True  # Pinbar/engulfing at SR
+    use_candle_rejection: bool = False  # Pinbar/engulfing at SR
     
-    # Advanced quant filters
-    use_momentum_filter: bool = True
+    # Advanced quant filters - DISABLED for baseline testing
+    use_momentum_filter: bool = False
     momentum_lookback: int = 10
-    use_mean_reversion: bool = True
+    use_mean_reversion: bool = False
     
     # ML filter parameters
     ml_min_prob: float = 0.6
@@ -183,9 +184,12 @@ class StrategyParams:
     # Additional toggles and parameters for refined regime-based trading
     # ============================================================================
     
+    # ADX Regime Filter Master Toggle
+    use_adx_regime_filter: bool = False  # DISABLED: Set to True to enable ADX-based regime filtering (Trend/Range/Transition modes)
+
     # ADX Slope-Based Early Trend Entry
     use_adx_slope_rising: bool = False  # If True, allow Trend Mode entries on rising ADX (even slightly below threshold) combined with strong +DI/-DI crossover
-    
+
     # Additional Strategy-Level Toggles
     use_fib_0786_only: bool = False  # True: require 0.786 zone only; False: allow broader 0.618-0.886
     use_market_structure_bos_only: bool = False  # True: require BOS only; False: allow BOS or CHoCH
@@ -253,6 +257,7 @@ class StrategyParams:
             "partial_exit_pct": self.partial_exit_pct,
             "atr_trail_multiplier": self.atr_trail_multiplier,
             # REGIME-ADAPTIVE V2 ENHANCED PARAMETERS
+            "use_adx_regime_filter": self.use_adx_regime_filter,
             "use_adx_slope_rising": self.use_adx_slope_rising,
             "use_fib_0786_only": self.use_fib_0786_only,
             "use_market_structure_bos_only": self.use_market_structure_bos_only,
@@ -514,10 +519,14 @@ def detect_regime(
     daily_candles: List[Dict],
     adx_trend_threshold: float = 25.0,
     adx_range_threshold: float = 20.0,
-    use_adx_slope_rising: bool = False
+    use_adx_slope_rising: bool = False,
+    use_adx_regime_filter: bool = True  # When False, always returns 'Trend' mode with can_trade=True (bypasses ADX filtering)
 ) -> Dict:
     """
     Detect market regime based on ADX (Average Directional Index).
+    
+    When use_adx_regime_filter=False, the ADX filter is bypassed and all setups
+    are treated as Trend Mode. This allows trading without regime restrictions.
     
     This is the core function for the Regime-Adaptive V2 trading system.
     It classifies the current market into one of three regimes:
@@ -566,6 +575,17 @@ def detect_regime(
         - ADX is calculated using standard 14-period smoothing
     """
     adx = calculate_adx(daily_candles, period=14)
+    
+    # BYPASS ADX REGIME FILTER: When disabled, treat all setups as Trend Mode
+    if not use_adx_regime_filter:
+        return {
+            'mode': 'Trend',
+            'adx': adx,
+            'can_trade': True,
+            'description': f'ADX Filter DISABLED: Trading without regime restrictions (ADX={adx:.1f})',
+            'early_trend_entry': False,
+            'adx_filter_disabled': True
+        }
     
     adx_slope = 0.0
     di_crossover_info = ""
