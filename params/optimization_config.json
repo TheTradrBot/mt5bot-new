@@ -1,9 +1,9 @@
 {
   "_comment": "Unified Optimization Configuration - Single source of truth",
-  "_updated_at": "2025-06-01",
+  "_updated_at": "2025-12-28",
   
-  "use_multi_objective": false,
-  "use_adx_regime_filter": false,
+  "use_multi_objective": true,
+  "use_adx_regime_filter": true,
   "use_adx_slope_rising": false,
   "use_partial_exits": true,
   "use_atr_trailing": true,

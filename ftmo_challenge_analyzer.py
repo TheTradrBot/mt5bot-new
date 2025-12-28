@@ -2193,18 +2193,108 @@ def run_multi_objective_optimization(n_trials: int = 50) -> Dict:
         print(f"   Win Rate: {wr:.1f}%")
         print(f"   Composite Score: {best_composite_score:.3f}")
         
-        best_params = best_trial.params
+        # ============================================================================
+        # PHASE 2: TOP-5 PARETO VALIDATION (OOS Check)
+        # Same validation flow as TPE - prevents overfitting
+        # ============================================================================
+        print(f"\n{'='*70}")
+        print("PHASE 2: TOP-5 PARETO VALIDATION (Out-of-Sample)")
+        print(f"{'='*70}")
+        print("Running validation backtests on top 5 Pareto trials...")
+        
+        # Sort Pareto trials by composite score
+        pareto_scored = []
+        for trial in pareto_trials:
+            total_r, sharpe, wr = trial.values
+            r_score = total_r / 100
+            sharpe_score = sharpe
+            wr_score = (wr - 40) / 20
+            composite = 0.40 * r_score + 0.35 * sharpe_score + 0.25 * wr_score
+            pareto_scored.append((trial, composite, total_r, sharpe, wr))
+        
+        pareto_scored.sort(key=lambda x: x[1], reverse=True)
+        top_5_pareto = [t[0] for t in pareto_scored[:5]]
+        
+        # Run validation on top 5
+        validation_results = []
+        for rank, trial in enumerate(top_5_pareto, 1):
+            params = trial.params
+            training_r = trial.values[0]
+            
+            print(f"  [{rank}/5] Trial #{trial.number} (Training R: {training_r:+.1f})")
+            
+            val_trades = run_full_period_backtest(
+                start_date=VALIDATION_START,
+                end_date=VALIDATION_END,
+                min_confluence=params.get('min_confluence_score', 3),
+                min_quality_factors=params.get('min_quality_factors', 2),
+                risk_per_trade_pct=params.get('risk_per_trade_pct', 0.5),
+                atr_min_percentile=params.get('atr_min_percentile', 60.0),
+                trail_activation_r=params.get('trail_activation_r', 2.2),
+                december_atr_multiplier=params.get('december_atr_multiplier', 1.5),
+                volatile_asset_boost=params.get('volatile_asset_boost', 1.5),
+                ml_min_prob=None,
+                require_adx_filter=True,
+                use_adx_regime_filter=False,
+                adx_trend_threshold=params.get('adx_trend_threshold', 25.0),
+                adx_range_threshold=params.get('adx_range_threshold', 20.0),
+                trend_min_confluence=params.get('trend_min_confluence', 6),
+                range_min_confluence=params.get('range_min_confluence', 5),
+                atr_volatility_ratio=params.get('atr_vol_ratio_range', 0.8),
+                atr_trail_multiplier=params.get('atr_trail_multiplier', 1.5),
+                partial_exit_at_1r=params.get('partial_exit_at_1r', True),
+                partial_exit_pct=params.get('partial_exit_pct', 0.5),
+            )
+            
+            val_r = sum(getattr(t, 'rr', 0) for t in val_trades) if val_trades else 0
+            val_n = len(val_trades) if val_trades else 0
+            val_wins = sum(1 for t in val_trades if getattr(t, 'rr', 0) > 0) if val_trades else 0
+            val_wr = (val_wins / val_n * 100) if val_n > 0 else 0
+            
+            validation_results.append({
+                'trial': trial,
+                'params': params,
+                'training_r': training_r,
+                'val_r': val_r,
+                'val_trades': val_n,
+                'val_wr': val_wr,
+                'val_trade_objects': val_trades,
+            })
+            print(f"      → Validation: {val_n} trades, R={val_r:+.1f}, WR={val_wr:.1f}%")
+        
+        # Sort by validation R (best OOS performance)
+        validation_results.sort(key=lambda x: x['val_r'], reverse=True)
+        
+        print(f"\n{'='*70}")
+        print("VALIDATION RANKING (Best OOS Performance)")
+        print(f"{'='*70}")
+        print(f"{'Rank':<6} {'Trial':<8} {'Train R':>10} {'Val R':>10} {'Val WR':>10}")
+        print(f"{'-'*50}")
+        for rank, res in enumerate(validation_results, 1):
+            print(f"{rank:<6} #{res['trial'].number:<6} {res['training_r']:>+10.1f} {res['val_r']:>+10.1f} {res['val_wr']:>9.1f}%")
+        
+        # Select best OOS performer
+        best_oos = validation_results[0]
+        best_trial = best_oos['trial']
+        best_params = best_oos['params']
+        total_r, sharpe, wr = best_trial.values
+        
+        print(f"\n🏆 SELECTED: Trial #{best_trial.number} (Best OOS Performance)")
+        print(f"   Training R: {total_r:+.1f}, Sharpe: {sharpe:.2f}, WR: {wr:.1f}%")
+        print(f"   Validation R: {best_oos['val_r']:+.1f}, WR: {best_oos['val_wr']:.1f}%")
         
         # Save best params
         save_best_params_persistent(best_params)
         
         return {
             'best_params': best_params,
-            'best_score': best_composite_score,
+            'best_score': best_oos['val_r'],  # Use OOS score for selection
             'pareto_trials': len(pareto_trials),
             'total_r': total_r,
             'sharpe': sharpe,
             'win_rate': wr,
+            'validation_r': best_oos['val_r'],
+            'validation_wr': best_oos['val_wr'],
             'study': study,
             'n_trials': n_trials,
             'total_trials': len(study.trials),
