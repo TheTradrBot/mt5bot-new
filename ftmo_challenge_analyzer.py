@@ -60,6 +60,7 @@ from ftmo_config import FTMO_CONFIG, FTMO10KConfig, get_pip_size, get_sl_limits
 from config import FOREX_PAIRS, METALS, INDICES, CRYPTO_ASSETS
 from tradr.risk.position_sizing import calculate_lot_size, get_contract_specs
 from params.params_loader import save_optimized_params
+from params.optimization_config import get_optimization_config, OptimizationConfig
 
 # Professional Quant Suite Integration
 from professional_quant_suite import (
@@ -85,7 +86,16 @@ def save_best_params_persistent(best_params: Dict) -> None:
     except Exception as e:
         print(f"[!] Error saving best_params.json: {e}")
 
-OPTUNA_DB_PATH = "sqlite:///regime_adaptive_v2_clean.db"
+# ============================================================================
+# UNIFIED OPTIMIZATION CONFIG - Single source of truth
+# All database paths, study names, and feature toggles are now in:
+#   params/optimization_config.json
+# ============================================================================
+OPT_CONFIG = get_optimization_config()
+
+# Legacy constants for backwards compatibility - now derived from config
+OPTUNA_DB_PATH = OPT_CONFIG.db_path
+OPTUNA_STUDY_NAME = OPT_CONFIG.study_name
 
 _DATA_CACHE: Dict[str, List[Dict]] = {}
 OPTUNA_STUDY_NAME = "regime_adaptive_v2_clean"
@@ -1946,8 +1956,10 @@ def generate_summary_txt(
 # Uses Pareto frontier to find non-dominated solutions
 # ============================================================================
 
-MULTI_OBJECTIVE_DB = "sqlite:///multi_objective_study.db"
-MULTI_OBJECTIVE_STUDY_NAME = "ftmo_multi_objective_v1"
+# Use unified config for multi-objective as well
+# When use_multi_objective=True, we use the same DB but different study name
+MULTI_OBJECTIVE_DB = OPT_CONFIG.db_path
+MULTI_OBJECTIVE_STUDY_NAME = f"{OPT_CONFIG.study_name}_multi"
 
 
 def multi_objective_function(trial) -> Tuple[float, float, float]:
@@ -2148,15 +2160,16 @@ def main():
     """
     Professional FTMO Optimization Workflow with CLI support.
     
-    Uses ROLLING OPTIMIZATION window (last 18 months) for adaptive parameter fitting.
-    Training: 1 year of historical data ending 3 months ago
-    Validation: Most recent 3 months (out-of-sample)
+    Configuration is loaded from params/optimization_config.json
+    CLI arguments can override config file settings.
     
     Usage:
-      python ftmo_challenge_analyzer.py              # Run/resume optimization (5 trials)
+      python ftmo_challenge_analyzer.py              # Run/resume optimization (default 5 trials)
       python ftmo_challenge_analyzer.py --status     # Check progress without running
+      python ftmo_challenge_analyzer.py --config     # Show current configuration
       python ftmo_challenge_analyzer.py --trials 100 # Run 100 trials
       python ftmo_challenge_analyzer.py --multi      # Use NSGA-II multi-objective optimization
+      python ftmo_challenge_analyzer.py --adx        # Enable ADX regime filtering
     """
     parser = argparse.ArgumentParser(
         description="FTMO Professional Optimization System - Resumable with ADX Filter"
@@ -2183,38 +2196,68 @@ def main():
         default=20,
         help="Early stopping patience - stop if no improvement after N trials (default: 20)"
     )
+    parser.add_argument(
+        "--adx",
+        action="store_true", 
+        help="Enable ADX regime filtering (Trend/Range/Transition modes)"
+    )
+    parser.add_argument(
+        "--config",
+        action="store_true",
+        help="Show current optimization configuration and exit"
+    )
     args = parser.parse_args()
+    
+    # Load unified config and override with CLI args
+    config = get_optimization_config(reload=True)
+    
+    if args.config:
+        config.print_summary()
+        return
     
     if args.status:
         show_optimization_status()
         return
     
+    # CLI args override config file settings
     n_trials = args.trials
-    use_multi_objective = args.multi
+    use_multi_objective = args.multi or config.use_multi_objective
+    use_adx_regime = args.adx or config.use_adx_regime_filter
     early_stopping_patience = args.patience
 
     print(f"\n{'='*80}")
-    print("FTMO PROFESSIONAL OPTIMIZATION SYSTEM - REGIME-ADAPTIVE V2")
+    print("FTMO PROFESSIONAL OPTIMIZATION SYSTEM - UNIFIED CONFIG V3")
     print(f"{'='*80}")
-    print(f"\nData Partitioning (Multi-Year Robustness):")
+    
+    # Show active config
+    print(f"\n📋 Configuration (from params/optimization_config.json):")
+    print(f"  Database: {config.db_path}")
+    print(f"  Study: {config.study_name}")
+    print(f"  Multi-objective: {'✅ Enabled' if use_multi_objective else '❌ Disabled'}")
+    print(f"  ADX Regime Filter: {'✅ Enabled' if use_adx_regime else '❌ Disabled'}")
+    
+    print(f"\n📊 Data Partitioning (Multi-Year Robustness):")
     print(f"  TRAINING:    2023-01-01 to 2024-09-30 (in-sample)")
     print(f"  VALIDATION:  2024-10-01 to {VALIDATION_END.strftime('%Y-%m-%d')} (out-of-sample)")
     print(f"  FINAL:       Full 2023-2025 (December fully open)")
-    print(f"\nRegime-Adaptive V2 Trading System:")
-    print(f"  TREND MODE:      ADX >= threshold (momentum following)")
-    print(f"  RANGE MODE:      ADX < threshold (conservative mean reversion)")
-    print(f"  TRANSITION:      NO ENTRIES (wait for regime confirmation)")
-    print(f"\nEarly Stopping: After {early_stopping_patience} trials without improvement")
+    
+    if use_adx_regime:
+        print(f"\n⚙️  Regime-Adaptive Trading:")
+        print(f"  TREND MODE:      ADX >= threshold (momentum following)")
+        print(f"  RANGE MODE:      ADX < threshold (conservative mean reversion)")
+        print(f"  TRANSITION:      NO ENTRIES (wait for regime confirmation)")
+    
+    print(f"\n⏱️  Early Stopping: After {early_stopping_patience} trials without improvement")
     
     if use_multi_objective:
-        print(f"\n🎯 MULTI-OBJECTIVE MODE: NSGA-II Pareto Optimization")
-        print(f"   Objectives: Total R, Sharpe Ratio, Win Rate (all maximized)")
+        print(f"\n🎯 OPTIMIZATION MODE: NSGA-II Multi-Objective")
+        print(f"   Objectives: {', '.join(config.objectives)}")
         print(f"   Sampler: NSGA-II (evolutionary algorithm)")
     else:
-        print(f"\n📊 SINGLE-OBJECTIVE MODE: Composite Score Optimization")
+        print(f"\n📈 OPTIMIZATION MODE: TPE Single-Objective")
         print(f"   Score = R + Sharpe_bonus + PF_bonus + WR_bonus - penalties")
     
-    print(f"\nResumable: Study stored in {OPTUNA_DB_PATH}")
+    print(f"\n💾 Resumable: Study stored in {config.db_path}")
     print(f"{'='*80}\n")
     
     # ============================================================================
@@ -2283,7 +2326,7 @@ def main():
         volatile_asset_boost=best_params.get('volatile_asset_boost', 1.5),
         ml_min_prob=None,
         require_adx_filter=True,
-        use_adx_regime_filter=False,
+        use_adx_regime_filter=use_adx_regime,  # From unified config
         adx_trend_threshold=best_params.get('adx_trend_threshold', 25.0),
         adx_range_threshold=best_params.get('adx_range_threshold', 20.0),
         trend_min_confluence=best_params.get('trend_min_confluence', 6),

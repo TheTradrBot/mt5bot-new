@@ -1,0 +1,25 @@
+{
+  "_comment": "Unified Optimization Configuration - Single source of truth",
+  "_updated_at": "2025-06-01",
+  
+  "use_multi_objective": false,
+  "use_adx_regime_filter": false,
+  "use_adx_slope_rising": false,
+  "use_partial_exits": true,
+  "use_atr_trailing": true,
+  "use_volatility_sizing": false,
+  
+  "db_path": "sqlite:///ftmo_optimization.db",
+  "study_name": "ftmo_unified_study",
+  
+  "objectives": ["total_r", "sharpe_ratio", "win_rate"],
+  
+  "n_trials": 500,
+  "n_startup_trials": 20,
+  "timeout_hours": 48.0,
+  
+  "train_start": "2024-01-01",
+  "train_end": "2024-09-30",
+  "validation_start": "2024-10-01",
+  "validation_end": "2024-12-31"
+}

@@ -8,7 +8,8 @@ Automated MetaTrader 5 trading bot for FTMO 200K Challenge accounts. Two-environ
 ## Architecture & Data Flow
 
 ```
-params/current_params.json  ← Single source of truth for all parameters
+params/optimization_config.json  ← Optimization mode settings (multi-obj, ADX, etc.)
+params/current_params.json       ← Optimized strategy parameters
          ↑                            ↓
 ftmo_challenge_analyzer.py      main_live_bot.py
 (Optuna optimization)           (loads params at startup)
@@ -21,6 +22,7 @@ data/ohlcv/{SYMBOL}_{TF}_2003_2025.csv  (historical data)
 |------|---------|
 | `strategy_core.py` | Trading strategy logic - 7 Confluence Pillars, regime detection |
 | `params/params_loader.py` | Load/save optimized parameters from JSON |
+| `params/optimization_config.py` | Unified optimization config (DB path, mode toggles) |
 | `config.py` | Account settings, CONTRACT_SPECS (pip values), tradable symbols |
 | `ftmo_config.py` | FTMO challenge rules, risk limits, TP/SL settings |
 | `symbol_mapping.py` | OANDA ↔ FTMO symbol conversion (`EUR_USD` → `EURUSD`) |
@@ -64,9 +66,13 @@ htf_candles = _slice_htf_by_timestamp(weekly_candles, current_daily_dt)
 ```bash
 python ftmo_challenge_analyzer.py             # Run/resume optimization
 python ftmo_challenge_analyzer.py --status    # Check progress
+python ftmo_challenge_analyzer.py --config    # Show current configuration
 python ftmo_challenge_analyzer.py --trials 100  # Set trial count
+python ftmo_challenge_analyzer.py --multi     # Use NSGA-II multi-objective
+python ftmo_challenge_analyzer.py --adx       # Enable ADX regime filtering
 ```
-Uses Optuna with SQLite storage (`regime_adaptive_v2_clean.db`) for crash-resistant optimization.
+Uses Optuna with SQLite storage (`ftmo_optimization.db`) for crash-resistant optimization.
+Configuration loaded from `params/optimization_config.json`.
 
 ### Run Live Bot (Windows VM only)
 ```bash
