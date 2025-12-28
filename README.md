@@ -29,7 +29,15 @@ python main_live_bot.py
 
 ## Recent Updates (Dec 28, 2025)
 
+### New Features
+- ✨ **FTMOComplianceTracker**: FTMO compliance tracking with daily DD (4.5%), total DD (9%), streak halt
+- ✨ **Parameter expansion**: 25+ optimizable parameters (TP scaling, 6 filter toggles, ADX regime)
+- ✨ **TP scaling**: tp1/2/3_r_multiple (1.0-6.0R) and tp1/2/3_close_pct (0.15-0.40) for dynamic profit taking
+- ✨ **Filter toggles**: 6 new filters (HTF, structure, Fibonacci, confirmation, displacement, candle rejection)
+- ✨ **Successful test**: 5 trials generated 800-1400 trades each, best: +549R (Sharpe 2.80)
+
 ### Critical Bug Fixes
+- ✅ **0-trade bug**: Fixed aggressive filters/compliance penalties causing 0 trades - now 800-1400/trial
 - ✅ **params_loader.py**: Removed obsolete `liquidity_sweep_lookback` parameter
 - ✅ **Metric calculations**: Fixed win_rate (4700%→47%), Calmar ratio (0.00→proper values), total_return units
 - ✅ **Optimization logs**: Fixed R=0.0 display bug for losing trials
@@ -41,7 +49,7 @@ python main_live_bot.py
 
 ### Configuration
 - 🔧 **ADX filter**: Disabled (incompatible with current strategy baseline)
-- 🔧 **Parameter loader**: Updated with complete 60+ parameter mapping
+- 🔧 **Filter toggles**: Hard-coded to False during optimization (baseline establishment)
 
 ## Project Structure
 

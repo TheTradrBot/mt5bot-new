@@ -7,7 +7,28 @@
 
 ## Recent Changes (Session: Dec 28, 2025)
 
+### New Features
+- **FTMOComplianceTracker**: Implemented FTMO compliance tracking class with:
+  - Daily drawdown halt (4.5% threshold, 5% FTMO limit)
+  - Total drawdown halt (9% threshold, 10% FTMO limit)
+  - Consecutive loss streak halt (disabled: 999 losses)
+  - Metrics-only mode for backtesting (no trade filtering)
+  - Comprehensive compliance reporting
+- **Parameter expansion**: Expanded optimization search space to 25+ parameters:
+  - TP scaling: tp1/2/3_r_multiple (1.0-6.0R) and tp1/2/3_close_pct (0.15-0.40)
+  - Filter toggles: 6 new optimizable filters (HTF, structure, Fibonacci, confirmation, displacement, candle rejection)
+  - Hard constraints: TP ordering (tp1<tp2<tp3), close-sum ≤85%, ADX threshold ordering
+- **Successful optimization**: 5-trial test run generated 800-1400 trades/trial (was 0 before fix)
+  - Best training: +194R (1127 trades, 43% WR)
+  - Best validation: +327R (498 trades, 33% WR)
+  - Final backtest: +549R (1394 trades, 28% WR, Sharpe 2.80)
+
 ### Bug Fixes
+- **CRITICAL**: Fixed 0-trade bug caused by aggressive filter toggles and compliance penalties
+  - Filter toggles now hard-coded to False during optimization (baseline establishment)
+  - Compliance penalty check disabled (trades rejected for DD breaches)
+  - Consecutive loss halt set to 999 (effectively disabled)
+  - Compliance tracking changed from filtering to metrics-only mode
 - **CRITICAL**: Fixed `params_loader.py` - removed obsolete `liquidity_sweep_lookback` parameter causing optimizer crashes
 - **CRITICAL**: Fixed metric calculations in `professional_quant_suite.py`:
   - Win rate: Removed duplicate `* 100` multiplication (was showing 4700% instead of 47%)

@@ -34,12 +34,25 @@ data/ohlcv/{SYMBOL}_{TF}_2003_2025.csv  (historical data)
 ### Recent Bug Fixes (Dec 28, 2025)
 **IMPORTANT**: The following bugs were recently fixed - avoid reintroducing:
 
-1. **params_loader.py**: Removed `liquidity_sweep_lookback` parameter (doesn't exist in StrategyParams)
-2. **professional_quant_suite.py**:
+1. **FTMOComplianceTracker**: Implemented compliance tracking class with daily DD (4.5%), total DD (9%), streak halt (999)
+   - Metrics-only mode for backtesting (no trade filtering)
+   - Returns (trades, compliance_report) tuple from run_full_period_backtest
+   - Hard constraints: TP ordering (tp1<tp2<tp3), close-sum ≤85%, ADX threshold ordering
+2. **Parameter expansion**: Expanded search space from 17→25+ parameters:
+   - TP scaling: tp1/2/3_r_multiple (1.0-6.0R) and tp1/2/3_close_pct (0.15-0.40)
+   - Filter toggles: 6 new filters (HTF, structure, Fibonacci, confirmation, displacement, candle rejection)
+   - All filter toggles HARD-CODED to False during optimization (baseline establishment)
+3. **0-trade bug fix**: Initial implementation filtered all trades due to:
+   - Aggressive filter toggles set to True
+   - Compliance penalty rejecting trials with DD breaches
+   - Streak halt (7) filtering 889/897 trades
+   - FIX: Filters disabled, compliance penalty removed, streak halt set to 999
+4. **params_loader.py**: Removed `liquidity_sweep_lookback` parameter (doesn't exist in StrategyParams)
+5. **professional_quant_suite.py**:
    - Win rate: Remove duplicate `* 100` (already percentage)
    - Calmar ratio: Use `max_drawdown_pct` not `max_drawdown` (USD)
    - Total return: Return USD value, not percentage
-3. **ftmo_challenge_analyzer.py**:
+6. **ftmo_challenge_analyzer.py**:
    - Quarterly stats must be calculated BEFORE early return for losing trials
    - Use `overall_stats['r_total']` not `user_attrs.get('total_r')` for logging
    - ADX filter disabled: `require_adx_filter=False` everywhere
@@ -132,8 +145,9 @@ tail -f ftmo_analysis_output/NSGA/optimization.log # Monitor NSGA-II progress
 - Optimized params: `params/current_params.json`
 - Backtest output: `ftmo_analysis_output/`
 - Logs: `logs/tradr_live.log`
-- Documentation: `docs/` (system guide, strategy analysis)
+- Documentation: `docs/` (system guide, strategy analysis, compliance tracking)
 - Utility scripts: `scripts/` (optimization monitoring, debug tools)
+- New docs: `docs/COMPLIANCE_TRACKING_IMPLEMENTATION.md` (FTMOComplianceTracker guide)
 
 ## Testing Strategy Changes
 1. Modify `strategy_core.py` (contains `compute_confluence()`, `simulate_trades()`)

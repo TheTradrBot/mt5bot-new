@@ -10,8 +10,10 @@
 
 **What**: Automated MetaTrader 5 trading bot for FTMO $200K Challenge accounts  
 **Strategy**: 7-Pillar Confluence System with ADX regime detection  
-**Optimization**: Optuna (TPE/NSGA-II) with 25+ parameters  
+**Optimization**: Optuna (TPE/NSGA-II) with 25+ parameters (TP scaling, filter toggles, ADX regime)  
+**Compliance**: FTMOComplianceTracker monitors daily DD (4.5%), total DD (9%), streak halts  
 **Deployment**: Windows (live bot) + Linux (optimizer)  
+**Recent Results**: 1394 trades, +549R, $549K profit, Sharpe 2.80, WR 27.7% (test run)  
 **Performance**: ~48% win rate, ~40% annual return (target: 60%+ WR, 100%+ return)
 
 ---

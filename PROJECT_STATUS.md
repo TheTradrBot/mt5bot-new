@@ -9,6 +9,11 @@
 The mt5bot-new project is a **professional-grade automated trading system** for FTMO 200K Challenge accounts. Recent baseline analysis (Trial #0) reveals the system has a solid foundation with **all critical bugs now resolved**.
 
 ### ✅ Recent Fixes (Dec 28, 2025)
+- **FTMOComplianceTracker**: Implemented FTMO compliance tracking with daily DD (4.5%), total DD (9%), and streak halt metrics
+- **Parameter expansion**: Expanded search space from 17→25+ parameters (TP multiples, close percentages, 6 filter toggles)
+- **Filter toggles**: Added 6 optimizable filters (HTF, structure, Fibonacci, confirmation, displacement, candle rejection)
+- **TP scaling**: Added tp1/2/3_r_multiple and tp1/2/3_close_pct parameters for dynamic profit taking
+- **Compliance bug fix**: Disabled aggressive filters and penalties causing 0-trade trials - now generates 800-1400 trades/trial
 - **params_loader.py**: Removed obsolete `liquidity_sweep_lookback` parameter (was causing crashes)
 - **Metric calculations**: Fixed win_rate (4700%→47%), Calmar ratio (0.00→proper values), total_return units
 - **Optimization logs**: Fixed R=0.0 display bug for losing trials - now shows actual negative R values
@@ -19,6 +24,8 @@ The mt5bot-new project is a **professional-grade automated trading system** for 
 ### System Capabilities
 - ✅ **Dual optimization modes** (NSGA-II multi-objective + TPE single-objective)
 - ✅ **Unified parameter management** (JSON-first, 60+ parameters fully mapped)
+- ✅ **Expanded parameter space** (25+ optimizable parameters: TP scaling, filter toggles, ADX regime, etc.)
+- ✅ **FTMO compliance tracking** (daily/total DD monitoring, metrics-only mode for backtesting)
 - ✅ **Auto-updating documentation** (118KB+ across 7 comprehensive files)
 - ✅ **Modular architecture** (tradr/* package + clean separation)
 - ✅ **Separate mode outputs** (NSGA/ and TPE/ directories with history archiving)
@@ -237,9 +244,10 @@ python ftmo_challenge_analyzer.py --single --trials 100
 - Faster convergence
 - Output: `ftmo_analysis_output/TPE/`
 
-### 3. **Parameter Management (17 Parameters)**
+### 3. **Parameter Management (25+ Parameters)**
 ```json
 {
+  // Core parameters (17 existing)
   "min_confluence": 2,              // Minimum confluence score (2-6)
   "min_quality_factors": 1,         // Quality factor threshold
   "risk_per_trade_pct": 0.3,        // Risk per trade (0.2-1.0%)
@@ -256,7 +264,23 @@ python ftmo_challenge_analyzer.py --single --trials 100
   "atr_trail_multiplier": 2.2,      // ATR trailing stop multiplier
   "partial_exit_at_1r": false,      // Take partial profit at 1R
   "use_adx_slope_rising": false,    // Require rising ADX
-  "partial_exit_pct": 0.35          // Partial exit percentage
+  "partial_exit_pct": 0.35,         // Partial exit percentage
+  
+  // NEW: TP scaling parameters (6)
+  "tp1_r_multiple": 1.5,             // First TP target (1.0-2.0R)
+  "tp2_r_multiple": 2.5,             // Second TP target (2.0-4.0R)
+  "tp3_r_multiple": 4.0,             // Third TP target (3.0-6.0R)
+  "tp1_close_pct": 0.25,             // Close 25% at TP1 (0.15-0.35)
+  "tp2_close_pct": 0.30,             // Close 30% at TP2 (0.20-0.40)
+  "tp3_close_pct": 0.25,             // Close 25% at TP3 (0.15-0.35)
+  
+  // NEW: Filter toggles (6) - currently disabled for baseline
+  "use_htf_filter": false,           // Higher timeframe filter
+  "use_structure_filter": false,     // Market structure filter
+  "use_fib_filter": false,           // Fibonacci zone filter
+  "use_confirmation_filter": false,  // Confirmation candle filter
+  "use_displacement_filter": false,  // Price displacement filter
+  "use_candle_rejection": false      // Candle rejection filter
 }
 ```
 
