@@ -65,6 +65,24 @@ Optimization is resumable via SQLite database: `ftmo_optimization.db`
 
 ## Documentation
 
-- [PROFESSIONAL_SYSTEM_GUIDE.md](docs/PROFESSIONAL_SYSTEM_GUIDE.md) - Full system documentation
-- [TRADING_STRATEGY_ANALYSIS.txt](docs/TRADING_STRATEGY_ANALYSIS.txt) - Strategy deep dive
-- [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) - High-level project summary
+### Core Documentation (Auto-Updated)
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete system architecture & data flow (28KB)
+- **[STRATEGY_GUIDE.md](docs/STRATEGY_GUIDE.md)** - Trading strategy deep dive with current parameters (11KB)
+- **[API_REFERENCE.md](docs/API_REFERENCE.md)** - Complete API documentation for all modules (46KB)
+- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Installation, deployment & troubleshooting (8.3KB)
+- **[OPTIMIZATION_FLOW.md](docs/OPTIMIZATION_FLOW.md)** - 4-phase optimization process (5.3KB)
+- **[CHANGELOG.md](docs/CHANGELOG.md)** - Version history & recent changes (2.2KB)
+
+### Legacy Documentation
+- **[PROFESSIONAL_SYSTEM_GUIDE.md](docs/PROFESSIONAL_SYSTEM_GUIDE.md)** - Original system guide
+- **[TRADING_STRATEGY_ANALYSIS.txt](docs/TRADING_STRATEGY_ANALYSIS.txt)** - Strategy analysis notes
+
+### Quick References
+- **[.github/copilot-instructions.md](.github/copilot-instructions.md)** - AI assistant context & commands
+
+**📝 Documentation Auto-Update**: All core docs are auto-generated from source code on every commit via GitHub Actions. Manual update: `python scripts/update_docs.py`
+
+---
+
+**Last Documentation Update**: 2025-12-28 13:10:13  
+**Auto-generated**: Run `python scripts/update_docs.py` to regenerate docs
