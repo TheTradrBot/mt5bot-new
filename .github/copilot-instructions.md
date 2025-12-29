@@ -31,31 +31,29 @@ data/ohlcv/{SYMBOL}_{TF}_2003_2025.csv  (historical data)
 
 ## Critical Conventions
 
-### Recent Bug Fixes (Dec 28, 2025)
-**IMPORTANT**: The following bugs were recently fixed - avoid reintroducing:
+### Recent Updates (Dec 29, 2025)
+**LATEST ENHANCEMENTS**:
 
-1. **FTMOComplianceTracker**: Implemented compliance tracking class with daily DD (4.5%), total DD (9%), streak halt (999)
-   - Metrics-only mode for backtesting (no trade filtering)
-   - Returns (trades, compliance_report) tuple from run_full_period_backtest
-   - Hard constraints: TP ordering (tp1<tp2<tp3), close-sum ≤85%, ADX threshold ordering
-2. **Parameter expansion**: Expanded search space from 17→25+ parameters:
-   - TP scaling: tp1/2/3_r_multiple (1.0-6.0R) and tp1/2/3_close_pct (0.15-0.40)
-   - Filter toggles: 6 new filters (HTF, structure, Fibonacci, confirmation, displacement, candle rejection)
-   - All filter toggles HARD-CODED to False during optimization (baseline establishment)
-3. **0-trade bug fix**: Initial implementation filtered all trades due to:
-   - Aggressive filter toggles set to True
-   - Compliance penalty rejecting trials with DD breaches
-   - Streak halt (7) filtering 889/897 trades
-   - FIX: Filters disabled, compliance penalty removed, streak halt set to 999
-4. **params_loader.py**: Removed `liquidity_sweep_lookback` parameter (doesn't exist in StrategyParams)
-5. **professional_quant_suite.py**:
-   - Win rate: Remove duplicate `* 100` (already percentage)
-   - Calmar ratio: Use `max_drawdown_pct` not `max_drawdown` (USD)
-   - Total return: Return USD value, not percentage
-6. **ftmo_challenge_analyzer.py**:
-   - Quarterly stats must be calculated BEFORE early return for losing trials
-   - Use `overall_stats['r_total']` not `user_attrs.get('total_r')` for logging
-   - ADX filter disabled: `require_adx_filter=False` everywhere
+1. **Enhanced Trade Logging** (Dec 29):
+   - Trade dataclass expanded with 25+ fields: lot_size, risk_usd/pct, TP hits/close_pct, partial_exits, exit_reason, MFE/MAE, duration
+   - Partial exit tracking: Each TP hit logs price, close_pct, r_gained in partial_exits list
+   - Exit reasons: SL, TP1+Trail, TP2+Trail, TP3+Trail, TP4+Trail, TP5
+   - CSV export includes partial_exits_json for full reconstruction
+   - TP Statistics summary: Automatic post-export analysis showing TP1/2/3 hit rates and exit reason breakdown
+
+2. **Validation Scope Fix** (Dec 29):
+   - `validate_top_trials()` now accepts `trial_whitelist` parameter
+   - Only validates trials from current optimization run (prevents history pollution)
+   - Correctly handles runs with <5 trials (top_n = min(5, new_trial_count))
+   - Both TPE and NSGA-II modes track `new_trial_numbers` and pass to validation
+
+3. **Bug Fixes (Dec 28)**:
+   - **FTMOComplianceTracker**: Implemented compliance tracking class with daily DD (4.5%), total DD (9%), streak halt (999)
+   - **Parameter expansion**: Expanded search space from 17→35+ parameters (TP scaling, filter toggles)
+   - **0-trade bug fix**: Filters disabled, compliance penalty removed, streak halt set to 999
+   - **params_loader.py**: Removed `liquidity_sweep_lookback` parameter
+   - **professional_quant_suite.py**: Fixed win rate duplicate `* 100`, Calmar ratio calculation, total return format
+   - **ftmo_challenge_analyzer.py**: Quarterly stats calculated before early returns, ADX filter disabled
 
 ### Symbol Format
 - **Config/data files**: OANDA format with underscores (`EUR_USD`, `XAU_USD`)

@@ -1,11 +1,46 @@
 # Changelog
 
-**Last Updated**: 2025-12-28  
+**Last Updated**: 2025-12-29  
 **Auto-generated**: From git commits
 
 ---
 
-## Recent Changes (Session: Dec 28, 2025)
+## Recent Changes (Session: Dec 29, 2025)
+
+### New Features
+- **Enhanced Trade Logging**: Expanded Trade dataclass with 25+ fields for granular analysis
+  - Core fields: lot_size, risk_usd, risk_pct, profit_usd
+  - TP tracking: tp1/2/3_hit (bool), tp1/2/3_close_pct (actual close %)
+  - Partial exits: partial_exits list with {tp_level, price, close_pct, r_gained} per TP hit
+  - Exit tracking: exit_reason (SL, TP1+Trail, TP2+Trail, TP3+Trail, TP4+Trail, TP5)
+  - Performance: final_position_pct, max_favorable_excursion, max_adverse_excursion, trade_duration_hours
+  - CSV export expanded from 13 to 25+ columns with partial_exits_json (JSON serialized list)
+- **TP Statistics Summary**: Automatic post-export analysis function
+  - Displays TP1/2/3 hit rates (% of trades that reached each level)
+  - Exit reason breakdown (% of trades closed at each exit type)
+  - Helps identify optimal TP scaling and trail strategy
+- **Validation Scope Fix**: Prevents re-validation of historical trials
+  - validate_top_trials() now accepts trial_whitelist parameter
+  - Both TPE and NSGA-II optimizers track new_trial_numbers via set difference
+  - Only validates trials from current optimization run (prevents history pollution)
+  - Correctly handles runs with <5 trials (top_n = min(5, new_trial_count))
+  - Test verified: 2-trial run validated only 2 trials (not all 24 historical)
+
+### Bug Fixes
+- **Dataclass field ordering**: Fixed non-default argument 'symbol' following default argument
+  - Moved trade_id field after is_winner/exit_reason (non-default fields first)
+  - Added Set to typing imports to resolve NameError
+- **Validation history pollution**: Historical trials no longer re-validated on each run
+  - Before: All 24 trials validated → 24 history folders created
+  - After: Only 2 new trials validated → 1 history folder created
+
+### Configuration Changes
+- TRADE_COLUMNS constant in ftmo_challenge_analyzer.py now defines 25 CSV fields
+- OutputManager._export_trades_csv() rewritten to handle all new fields with JSON serialization
+
+---
+
+## Previous Changes (Session: Dec 28, 2025)
 
 ### New Features
 - **FTMOComplianceTracker**: Implemented FTMO compliance tracking class with:

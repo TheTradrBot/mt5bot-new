@@ -31,7 +31,7 @@ import numpy as np
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Any, Union
+from typing import List, Dict, Optional, Tuple, Any, Union, Set
 import pandas as pd
 
 from strategy_core import (
@@ -600,6 +600,49 @@ class BacktestTrade:
             "ADX Value": round(self.adx_value, 1),
             "Validation Notes": self.validation_notes,
         }
+
+
+TRADE_COLUMNS = [
+    'trade_id', 'symbol', 'direction',
+    'entry_date', 'exit_date', 'trade_duration_hours',
+    'entry_price', 'exit_price', 'stop_loss',
+    'lot_size', 'risk_usd', 'risk_pct',
+    'tp1_price', 'tp2_price', 'tp3_price',
+    'tp1_hit', 'tp2_hit', 'tp3_hit',
+    'tp1_close_pct', 'tp2_close_pct', 'tp3_close_pct',
+    'exit_reason', 'partial_exits_json',
+    'result_r', 'profit_usd', 'win',
+    'max_favorable_excursion', 'max_adverse_excursion',
+    'confluence_score', 'quality_factors'
+]
+
+
+def print_tp_statistics(trades: List[Trade]):
+    """Print statistics about TP hits and exit reasons."""
+    total = len(trades)
+    if total == 0:
+        return
+    tp1_hits = sum(1 for t in trades if getattr(t, 'tp1_hit', False))
+    tp2_hits = sum(1 for t in trades if getattr(t, 'tp2_hit', False))
+    tp3_hits = sum(1 for t in trades if getattr(t, 'tp3_hit', False))
+    sl_hits = sum(1 for t in trades if getattr(t, 'exit_reason', '') == 'SL')
+    print("\n" + "=" * 60)
+    print("TAKE PROFIT STATISTIEKEN")
+    print("=" * 60)
+    print(f"Totaal trades: {total}")
+    print("")
+    print(f"TP1 Hit Rate: {tp1_hits}/{total} ({tp1_hits/total*100:.1f}%)")
+    print(f"TP2 Hit Rate: {tp2_hits}/{total} ({tp2_hits/total*100:.1f}%)")
+    print(f"TP3 Hit Rate: {tp3_hits}/{total} ({tp3_hits/total*100:.1f}%)")
+    print(f"SL Hit Rate:  {sl_hits}/{total} ({sl_hits/total*100:.1f}%)")
+    print("")
+    exit_reasons: Dict[str, int] = {}
+    for t in trades:
+        reason = getattr(t, 'exit_reason', 'UNKNOWN') or 'UNKNOWN'
+        exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
+    print("Exit Reasons:")
+    for reason, count in sorted(exit_reasons.items(), key=lambda x: -x[1]):
+        print(f"  {reason}: {count} ({count/total*100:.1f}%)")
 
 
 class MonteCarloSimulator:
@@ -1171,21 +1214,49 @@ def export_trades_to_csv(trades: List[Trade], filename: str, risk_per_trade_pct:
     if not trades:
         print(f"No trades to export to {filename}")
         return
-    
-    backtest_trades = []
-    for i, trade in enumerate(trades, 1):
-        bt_trade = convert_to_backtest_trade(trade, i, risk_per_trade_pct)
-        backtest_trades.append(bt_trade)
-    
+    rows = []
+    for trade in trades:
+        td = trade.to_dict()
+        row = {
+            'trade_id': td.get('trade_id'),
+            'symbol': td.get('symbol'),
+            'direction': td.get('direction'),
+            'entry_date': td.get('entry_date'),
+            'exit_date': td.get('exit_date'),
+            'trade_duration_hours': td.get('trade_duration_hours'),
+            'entry_price': td.get('entry_price'),
+            'exit_price': td.get('exit_price'),
+            'stop_loss': td.get('stop_loss'),
+            'lot_size': td.get('lot_size'),
+            'risk_usd': td.get('risk_usd'),
+            'risk_pct': td.get('risk_pct'),
+            'tp1_price': td.get('tp1'),
+            'tp2_price': td.get('tp2'),
+            'tp3_price': td.get('tp3'),
+            'tp1_hit': td.get('tp1_hit'),
+            'tp2_hit': td.get('tp2_hit'),
+            'tp3_hit': td.get('tp3_hit'),
+            'tp1_close_pct': td.get('tp1_close_pct'),
+            'tp2_close_pct': td.get('tp2_close_pct'),
+            'tp3_close_pct': td.get('tp3_close_pct'),
+            'exit_reason': td.get('exit_reason'),
+            'partial_exits_json': json.dumps(td.get('partial_exits', [])),
+            'result_r': td.get('result_r'),
+            'profit_usd': td.get('profit_usd'),
+            'win': td.get('is_winner'),
+            'max_favorable_excursion': td.get('max_favorable_excursion'),
+            'max_adverse_excursion': td.get('max_adverse_excursion'),
+            'confluence_score': td.get('confluence_score'),
+            'quality_factors': td.get('quality_factors'),
+        }
+        rows.append(row)
     with open(filepath, 'w', newline='') as f:
-        if backtest_trades:
-            fieldnames = list(backtest_trades[0].to_dict().keys())
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            for trade in backtest_trades:
-                writer.writerow(trade.to_dict())
-    
-    print(f"Exported {len(backtest_trades)} trades to: {filepath}")
+        writer = csv.DictWriter(f, fieldnames=TRADE_COLUMNS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+    print(f"Exported {len(rows)} trades to: {filepath}")
+    print_tp_statistics(trades)
 
 
 def print_period_results(trades: List[Trade], period_name: str, start: datetime, end: datetime) -> Dict:
@@ -1770,6 +1841,7 @@ class OptunaOptimizer:
         )
         
         existing_trials = len(study.trials)
+        before_numbers = {t.number for t in study.trials}
         previous_best_value = None  # Track previous best to detect real improvements
         if existing_trials > 0:
             print(f"Resuming from existing study with {existing_trials} completed trials")
@@ -1897,6 +1969,10 @@ class OptunaOptimizer:
         self.best_params = study.best_params
         self.best_score = study.best_value
         
+        # Determine which trials were added in this run
+        after_numbers = {t.number for t in study.trials}
+        new_trial_numbers = sorted(list(after_numbers - before_numbers))
+        
         print(f"\n{'='*60}")
         print(f"OPTIMIZATION COMPLETE")
         print(f"{'='*60}")
@@ -1945,14 +2021,15 @@ class OptunaOptimizer:
             'best_score': self.best_score,
             'n_trials': n_trials,
             'total_trials': len(study.trials),
+            'new_trial_numbers': new_trial_numbers,
             'study': study,  # Return study for top 5 analysis
         }
 
 
-def validate_top_trials(study, top_n: int = 5) -> List[Dict]:
+def validate_top_trials(study, top_n: int = 5, trial_whitelist: Optional[Set[int]] = None) -> List[Dict]:
     """
     Run validation backtests on top N trials to find the best OOS performer.
-    This prevents overfitting by selecting based on validation performance.
+    Only considers trials from the current run when a whitelist is provided.
     
     Works with both single-objective and multi-objective (NSGA-II) studies.
     
@@ -1967,6 +2044,11 @@ def validate_top_trials(study, top_n: int = 5) -> List[Dict]:
     # Get all completed trials
     completed_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
     
+    # If provided, restrict to current session trial numbers
+    if trial_whitelist:
+        wl = set(trial_whitelist)
+        completed_trials = [t for t in completed_trials if t.number in wl]
+    
     if is_multi_objective:
         # For multi-objective: filter trials with valid values tuple
         completed_trials = [t for t in completed_trials if t.values is not None and len(t.values) >= 1]
@@ -1975,14 +2057,14 @@ def validate_top_trials(study, top_n: int = 5) -> List[Dict]:
             return []
         # Use Pareto front trials, or sort by first objective (Total R)
         try:
-            pareto_trials = study.best_trials
+            pareto_trials = [t for t in study.best_trials if (not trial_whitelist or t.number in wl)]
             if len(pareto_trials) >= top_n:
                 sorted_trials = pareto_trials[:top_n]
             else:
                 # Add more from sorted by Total R
                 non_pareto = [t for t in completed_trials if t not in pareto_trials]
                 non_pareto_sorted = sorted(non_pareto, key=lambda t: t.values[0], reverse=True)
-                sorted_trials = pareto_trials + non_pareto_sorted[:top_n - len(pareto_trials)]
+                sorted_trials = pareto_trials + non_pareto_sorted[:max(0, top_n - len(pareto_trials))]
         except:
             sorted_trials = sorted(completed_trials, key=lambda t: t.values[0], reverse=True)[:top_n]
     else:
@@ -2420,6 +2502,7 @@ def run_multi_objective_optimization(n_trials: int = 50) -> Dict:
     )
     
     existing_trials = len(study.trials)
+    before_numbers = {t.number for t in study.trials}
     if existing_trials > 0:
         print(f"Resuming study with {existing_trials} existing trials")
     
@@ -2430,6 +2513,9 @@ def run_multi_objective_optimization(n_trials: int = 50) -> Dict:
     
     # Run optimization
     study.optimize(multi_objective_function, n_trials=n_trials, callbacks=[progress_callback])
+    
+    after_numbers = {t.number for t in study.trials}
+    new_trial_numbers = sorted(list(after_numbers - before_numbers))
     
     # Get Pareto front (non-dominated solutions)
     pareto_trials = study.best_trials
@@ -2486,6 +2572,7 @@ def run_multi_objective_optimization(n_trials: int = 50) -> Dict:
             'study': study,
             'n_trials': n_trials,
             'total_trials': len(study.trials),
+            'new_trial_numbers': new_trial_numbers,
         }
     else:
         print("\n⚠️ No valid solutions found on Pareto frontier")
@@ -2592,17 +2679,23 @@ def main():
     # ============================================================================
     
     if study:
-        top_5_results = validate_top_trials(study, top_n=5)
+        current_trial_numbers = set(results.get('new_trial_numbers') or [])
+        if current_trial_numbers:
+            top_n = min(5, len(current_trial_numbers))
+            top_5_results = validate_top_trials(study, top_n=top_n, trial_whitelist=current_trial_numbers)
+        else:
+            print("No new trials in this run; skipping validation of historical trials.")
+            top_5_results = []
         
         if top_5_results:
-            # Use the best validation performer (not just best training score)
+            # Use the best validation performer among CURRENT RUN trials
             best_oos = top_5_results[0]
             best_params = best_oos['params']
             validation_trades = best_oos['validation_trade_objects']
             
             print(f"\n✅ Selected Trial #{best_oos['trial_number']} as FINAL (best OOS performance)")
         else:
-            # Fallback to best training params
+            # Fallback to best training params from this run
             best_params = results['best_params']
             validation_trades = []
     else:
@@ -2681,6 +2774,11 @@ def main():
     output_mgr.generate_monthly_stats(full_year_trades, "final", risk_pct)
     output_mgr.generate_symbol_performance(full_year_trades, risk_pct)
     print("✅ All CSV files exported successfully\n")
+    # Print TP statistics for the final run
+    try:
+        print_tp_statistics(full_year_trades)
+    except Exception:
+        pass
     
     full_year_results = print_period_results(
         full_year_trades, f"FULL PERIOD FINAL RESULTS ({FULL_PERIOD_START.year}-{FULL_PERIOD_END.year})",

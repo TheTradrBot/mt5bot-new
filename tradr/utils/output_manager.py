@@ -378,11 +378,19 @@ class OutputManager:
     ):
         """Export trades to CSV file."""
         if not trades:
-            # Create empty file with headers
+            # Create empty file with extended headers
             headers = [
-                'trade_id', 'symbol', 'direction', 'entry_date', 'exit_date',
-                'entry_price', 'exit_price', 'stop_loss', 'take_profit',
-                'result_r', 'profit_usd', 'win', 'confluence_score', 'quality_factors'
+                'trade_id', 'symbol', 'direction', 
+                'entry_date', 'exit_date', 'trade_duration_hours',
+                'entry_price', 'exit_price', 'stop_loss',
+                'lot_size', 'risk_usd', 'risk_pct',
+                'tp1_price', 'tp2_price', 'tp3_price',
+                'tp1_hit', 'tp2_hit', 'tp3_hit',
+                'tp1_close_pct', 'tp2_close_pct', 'tp3_close_pct',
+                'exit_reason', 'partial_exits_json',
+                'result_r', 'profit_usd', 'win',
+                'max_favorable_excursion', 'max_adverse_excursion',
+                'confluence_score', 'quality_factors'
             ]
             with open(filepath, 'w', newline='') as f:
                 writer = csv.writer(f)
@@ -394,22 +402,43 @@ class OutputManager:
         rows = []
         for i, t in enumerate(trades, 1):
             # Support both 'rr' (from strategy_core.Trade) and 'result_r' (legacy)
-            result_r = getattr(t, 'rr', getattr(t, 'result_r', 0))
-            profit_usd = result_r * risk_per_trade
-            
+            result_r = getattr(t, 'rr', getattr(t, 'result_r', 0.0))
+            profit_calc = result_r * risk_per_trade
+            profit_usd = getattr(t, 'profit_usd', profit_calc)
+            partial_exits = getattr(t, 'partial_exits', [])
+            try:
+                partial_json = json.dumps(partial_exits)
+            except Exception:
+                partial_json = '[]'
             rows.append({
-                'trade_id': i,
+                'trade_id': getattr(t, 'trade_id', i),
                 'symbol': getattr(t, 'symbol', ''),
                 'direction': getattr(t, 'direction', ''),
                 'entry_date': str(getattr(t, 'entry_date', '')),
                 'exit_date': str(getattr(t, 'exit_date', '')),
-                'entry_price': getattr(t, 'entry_price', 0),
-                'exit_price': getattr(t, 'exit_price', 0),
-                'stop_loss': getattr(t, 'stop_loss', 0),
-                'take_profit': getattr(t, 'tp1', 0),
-                'result_r': round(result_r, 2),
-                'profit_usd': round(profit_usd, 2),
+                'trade_duration_hours': getattr(t, 'trade_duration_hours', 0.0),
+                'entry_price': getattr(t, 'entry_price', 0.0),
+                'exit_price': getattr(t, 'exit_price', 0.0),
+                'stop_loss': getattr(t, 'stop_loss', 0.0),
+                'lot_size': getattr(t, 'lot_size', 0.0),
+                'risk_usd': getattr(t, 'risk_usd', risk_per_trade),
+                'risk_pct': getattr(t, 'risk_pct', risk_pct),
+                'tp1_price': getattr(t, 'tp1', None),
+                'tp2_price': getattr(t, 'tp2', None),
+                'tp3_price': getattr(t, 'tp3', None),
+                'tp1_hit': getattr(t, 'tp1_hit', False),
+                'tp2_hit': getattr(t, 'tp2_hit', False),
+                'tp3_hit': getattr(t, 'tp3_hit', False),
+                'tp1_close_pct': getattr(t, 'tp1_close_pct', 0.0),
+                'tp2_close_pct': getattr(t, 'tp2_close_pct', 0.0),
+                'tp3_close_pct': getattr(t, 'tp3_close_pct', 0.0),
+                'exit_reason': getattr(t, 'exit_reason', ''),
+                'partial_exits_json': partial_json,
+                'result_r': round(float(result_r), 4),
+                'profit_usd': round(float(profit_usd), 2),
                 'win': 1 if result_r > 0 else 0,
+                'max_favorable_excursion': getattr(t, 'max_favorable_excursion', getattr(t, 'mfe_rr', 0.0)),
+                'max_adverse_excursion': getattr(t, 'max_adverse_excursion', getattr(t, 'mae_rr', 0.0)),
                 'confluence_score': getattr(t, 'confluence_score', 0),
                 'quality_factors': getattr(t, 'quality_factors', 0),
             })

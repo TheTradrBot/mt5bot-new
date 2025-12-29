@@ -310,6 +310,7 @@ class Trade:
     entry_price: float
     exit_price: float
     stop_loss: float
+    take_profit: Optional[float] = None
     tp1: Optional[float] = None
     tp2: Optional[float] = None
     tp3: Optional[float] = None
@@ -319,15 +320,44 @@ class Trade:
     risk: float = 0.0
     reward: float = 0.0
     rr: float = 0.0
+    result_r: float = 0.0
+    profit_usd: float = 0.0
     
     is_winner: bool = False
     exit_reason: str = ""
+    trade_id: int = 0
+    
+    lot_size: float = 0.0
+    risk_usd: float = 0.0
+    risk_pct: float = 0.0
+    stop_pips: float = 0.0
+    actual_risk_pct: float = 0.0
     
     confluence_score: int = 0
+    quality_factors: int = 0
+    
+    tp1_hit: bool = False
+    tp2_hit: bool = False
+    tp3_hit: bool = False
+    tp4_hit: bool = False
+    tp5_hit: bool = False
+    
+    tp1_close_pct: float = 0.0
+    tp2_close_pct: float = 0.0
+    tp3_close_pct: float = 0.0
+    tp4_close_pct: float = 0.0
+    tp5_close_pct: float = 0.0
+    
+    partial_exits: List[Dict[str, Any]] = field(default_factory=list)
+    final_position_pct: float = 0.0
+    trade_duration_hours: float = 0.0
+    max_favorable_excursion: float = 0.0
+    max_adverse_excursion: float = 0.0
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert trade to dictionary."""
         return {
+            "trade_id": self.trade_id,
             "symbol": self.symbol,
             "direction": self.direction,
             "entry_date": str(self.entry_date),
@@ -335,6 +365,7 @@ class Trade:
             "entry_price": self.entry_price,
             "exit_price": self.exit_price,
             "stop_loss": self.stop_loss,
+            "take_profit": self.take_profit,
             "tp1": self.tp1,
             "tp2": self.tp2,
             "tp3": self.tp3,
@@ -343,9 +374,32 @@ class Trade:
             "risk": self.risk,
             "reward": self.reward,
             "rr": self.rr,
+            "result_r": self.result_r,
+            "profit_usd": self.profit_usd,
             "is_winner": self.is_winner,
             "exit_reason": self.exit_reason,
+            "lot_size": self.lot_size,
+            "risk_usd": self.risk_usd,
+            "risk_pct": self.risk_pct,
+            "stop_pips": self.stop_pips,
+            "actual_risk_pct": self.actual_risk_pct,
             "confluence_score": self.confluence_score,
+            "quality_factors": self.quality_factors,
+            "tp1_hit": self.tp1_hit,
+            "tp2_hit": self.tp2_hit,
+            "tp3_hit": self.tp3_hit,
+            "tp4_hit": self.tp4_hit,
+            "tp5_hit": self.tp5_hit,
+            "tp1_close_pct": self.tp1_close_pct,
+            "tp2_close_pct": self.tp2_close_pct,
+            "tp3_close_pct": self.tp3_close_pct,
+            "tp4_close_pct": self.tp4_close_pct,
+            "tp5_close_pct": self.tp5_close_pct,
+            "partial_exits": self.partial_exits,
+            "final_position_pct": self.final_position_pct,
+            "trade_duration_hours": self.trade_duration_hours,
+            "max_favorable_excursion": self.max_favorable_excursion,
+            "max_adverse_excursion": self.max_adverse_excursion,
         }
 
 
@@ -2430,6 +2484,7 @@ def simulate_trades(
     weekly_candles: Optional[List[Dict]] = None,
     h4_candles: Optional[List[Dict]] = None,
     include_transaction_costs: bool = True,
+    account_size: float = 200000.0,
 ) -> List[Trade]:
     """
     Simulate trades through historical candles using the Blueprint strategy.
@@ -2459,6 +2514,11 @@ def simulate_trades(
     """
     if params is None:
         params = StrategyParams()
+
+    try:
+        from tradr.risk.position_sizing import calculate_lot_size
+    except Exception:
+        calculate_lot_size = None
     
     transaction_cost_pips = 0.0
     pip_value = 0.0001
@@ -2536,6 +2596,22 @@ def simulate_trades(
             tp3_rr = ot["tp3_rr"]
             tp4_rr = ot["tp4_rr"]
             tp5_rr = ot["tp5_rr"]
+            mfe_rr = ot.get("mfe_rr", 0.0)
+            mae_rr = ot.get("mae_rr", 0.0)
+            partial_exits = ot.get("partial_exits", [])
+            position_remaining = ot.get("position_remaining", 1.0)
+
+            if risk > 0:
+                if direction == "bullish":
+                    favorable_rr = (high - entry_price) / risk
+                    adverse_rr = (low - entry_price) / risk
+                else:
+                    favorable_rr = (entry_price - low) / risk
+                    adverse_rr = (entry_price - high) / risk
+                mfe_rr = max(mfe_rr, favorable_rr)
+                mae_rr = min(mae_rr, adverse_rr)
+                ot["mfe_rr"] = mfe_rr
+                ot["mae_rr"] = mae_rr
             
             trade_closed = False
             rr = 0.0
@@ -2570,12 +2646,33 @@ def simulate_trades(
                         rr = -1.0
                         exit_reason = "SL"
                         is_winner = False
+                    if position_remaining > 0:
+                        partial_exits.append({
+                            "tp_level": "TRAIL" if exit_reason != "SL" else "SL",
+                            "price": trailing_sl,
+                            "close_pct": position_remaining,
+                            "r_gained": trail_rr * position_remaining,
+                        })
+                        position_remaining = 0.0
+                        ot["partial_exits"] = partial_exits
+                        ot["position_remaining"] = position_remaining
                     reward = rr * risk
                     trade_closed = True
                 
                 if not trade_closed and tp1 is not None and high >= tp1 and not tp1_hit:
                     ot["tp1_hit"] = True
                     tp1_hit = True
+                    close_pct = min(TP1_CLOSE_PCT, position_remaining)
+                    r_gained = tp1_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 1,
+                        "price": tp1,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     # Delay trailing activation until trail_activation_r is reached
                     if tp1_rr >= params.trail_activation_r:
                         ot["trailing_sl"] = entry_price
@@ -2584,6 +2681,17 @@ def simulate_trades(
                 if not trade_closed and tp1_hit and tp2 is not None and high >= tp2 and not tp2_hit:
                     ot["tp2_hit"] = True
                     tp2_hit = True
+                    close_pct = min(TP2_CLOSE_PCT, position_remaining)
+                    r_gained = tp2_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 2,
+                        "price": tp2,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     # Only activate trailing if we've reached trail_activation_r
                     if tp2_rr >= params.trail_activation_r and tp1 is not None:
                         ot["trailing_sl"] = tp1 + 0.5 * risk
@@ -2592,6 +2700,17 @@ def simulate_trades(
                 if not trade_closed and tp2_hit and tp3 is not None and high >= tp3 and not tp3_hit:
                     ot["tp3_hit"] = True
                     tp3_hit = True
+                    close_pct = min(TP3_CLOSE_PCT, position_remaining)
+                    r_gained = tp3_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 3,
+                        "price": tp3,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     # Only activate trailing if we've reached trail_activation_r
                     if tp3_rr >= params.trail_activation_r and tp2 is not None:
                         ot["trailing_sl"] = tp2 + 0.5 * risk
@@ -2600,11 +2719,35 @@ def simulate_trades(
                 if not trade_closed and tp3_hit and tp4 is not None and high >= tp4 and not tp4_hit:
                     ot["tp4_hit"] = True
                     tp4_hit = True
+                    close_pct = min(TP4_CLOSE_PCT, position_remaining)
+                    r_gained = tp4_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 4,
+                        "price": tp4,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     if tp3 is not None:
                         ot["trailing_sl"] = tp3 + 0.5 * risk
                 
                 if not trade_closed and tp4_hit and tp5 is not None and high >= tp5 and not tp5_hit:
                     ot["tp5_hit"] = True
+                    close_pct = min(TP5_CLOSE_PCT, position_remaining)
+                    r_gained = tp5_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 5,
+                        "price": tp5,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
+                    position_remaining = 0.0
+                    ot["position_remaining"] = position_remaining
                     rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * tp3_rr + TP4_CLOSE_PCT * tp4_rr + TP5_CLOSE_PCT * tp5_rr
                     reward = rr * risk
                     exit_reason = "TP5"
@@ -2637,12 +2780,33 @@ def simulate_trades(
                         rr = -1.0
                         exit_reason = "SL"
                         is_winner = False
+                    if position_remaining > 0:
+                        partial_exits.append({
+                            "tp_level": "TRAIL" if exit_reason != "SL" else "SL",
+                            "price": trailing_sl,
+                            "close_pct": position_remaining,
+                            "r_gained": trail_rr * position_remaining,
+                        })
+                        position_remaining = 0.0
+                        ot["partial_exits"] = partial_exits
+                        ot["position_remaining"] = position_remaining
                     reward = rr * risk
                     trade_closed = True
                 
                 if not trade_closed and tp1 is not None and low <= tp1 and not tp1_hit:
                     ot["tp1_hit"] = True
                     tp1_hit = True
+                    close_pct = min(TP1_CLOSE_PCT, position_remaining)
+                    r_gained = tp1_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 1,
+                        "price": tp1,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     # Delay trailing activation until trail_activation_r is reached
                     if tp1_rr >= params.trail_activation_r:
                         ot["trailing_sl"] = entry_price
@@ -2651,6 +2815,17 @@ def simulate_trades(
                 if not trade_closed and tp1_hit and tp2 is not None and low <= tp2 and not tp2_hit:
                     ot["tp2_hit"] = True
                     tp2_hit = True
+                    close_pct = min(TP2_CLOSE_PCT, position_remaining)
+                    r_gained = tp2_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 2,
+                        "price": tp2,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     # Only activate trailing if we've reached trail_activation_r
                     if tp2_rr >= params.trail_activation_r and tp1 is not None:
                         ot["trailing_sl"] = tp1 - 0.5 * risk
@@ -2659,6 +2834,17 @@ def simulate_trades(
                 if not trade_closed and tp2_hit and tp3 is not None and low <= tp3 and not tp3_hit:
                     ot["tp3_hit"] = True
                     tp3_hit = True
+                    close_pct = min(TP3_CLOSE_PCT, position_remaining)
+                    r_gained = tp3_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 3,
+                        "price": tp3,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     # Only activate trailing if we've reached trail_activation_r
                     if tp3_rr >= params.trail_activation_r and tp2 is not None:
                         ot["trailing_sl"] = tp2 - 0.5 * risk
@@ -2667,11 +2853,35 @@ def simulate_trades(
                 if not trade_closed and tp3_hit and tp4 is not None and low <= tp4 and not tp4_hit:
                     ot["tp4_hit"] = True
                     tp4_hit = True
+                    close_pct = min(TP4_CLOSE_PCT, position_remaining)
+                    r_gained = tp4_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 4,
+                        "price": tp4,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
                     if tp3 is not None:
                         ot["trailing_sl"] = tp3 - 0.5 * risk
                 
                 if not trade_closed and tp4_hit and tp5 is not None and low <= tp5 and not tp5_hit:
                     ot["tp5_hit"] = True
+                    close_pct = min(TP5_CLOSE_PCT, position_remaining)
+                    r_gained = tp5_rr * close_pct
+                    partial_exits.append({
+                        "tp_level": 5,
+                        "price": tp5,
+                        "close_pct": close_pct,
+                        "r_gained": r_gained,
+                    })
+                    position_remaining = max(0.0, position_remaining - close_pct)
+                    ot["partial_exits"] = partial_exits
+                    ot["position_remaining"] = position_remaining
+                    position_remaining = 0.0
+                    ot["position_remaining"] = position_remaining
                     rr = TP1_CLOSE_PCT * tp1_rr + TP2_CLOSE_PCT * tp2_rr + TP3_CLOSE_PCT * tp3_rr + TP4_CLOSE_PCT * tp4_rr + TP5_CLOSE_PCT * tp5_rr
                     reward = rr * risk
                     exit_reason = "TP5"
@@ -2683,8 +2893,25 @@ def simulate_trades(
                 adjusted_rr = rr - cost_r
                 adjusted_reward = adjusted_rr * risk
                 adjusted_is_winner = is_winner and adjusted_rr >= 0
-                
+
+                risk_usd_val = ot.get("risk_usd", 0.0)
+                lot_size_val = ot.get("lot_size", 0.0)
+                final_position_pct = ot.get("position_remaining", 0.0) * 100
+                entry_dt_val = ot.get("entry_timestamp")
+                exit_dt_val = bar_timestamp
+                trade_duration_hours = 0.0
+                try:
+                    if hasattr(entry_dt_val, "to_pydatetime"):
+                        entry_dt_val = entry_dt_val.to_pydatetime()
+                    if hasattr(exit_dt_val, "to_pydatetime"):
+                        exit_dt_val = exit_dt_val.to_pydatetime()
+                    if isinstance(entry_dt_val, datetime) and isinstance(exit_dt_val, datetime):
+                        trade_duration_hours = abs((exit_dt_val - entry_dt_val).total_seconds()) / 3600.0
+                except Exception:
+                    trade_duration_hours = 0.0
+
                 trade = Trade(
+                    trade_id=len(trades) + 1,
                     symbol=symbol,
                     direction=direction,
                     entry_date=ot["entry_timestamp"],
@@ -2700,9 +2927,32 @@ def simulate_trades(
                     risk=risk,
                     reward=adjusted_reward,
                     rr=adjusted_rr,
+                    result_r=adjusted_rr,
+                    profit_usd=risk_usd_val * adjusted_rr,
                     is_winner=adjusted_is_winner,
                     exit_reason=exit_reason,
+                    lot_size=lot_size_val,
+                    risk_usd=risk_usd_val,
+                    risk_pct=ot.get("risk_pct", 0.0),
+                    stop_pips=ot.get("stop_pips", 0.0),
+                    actual_risk_pct=ot.get("actual_risk_pct", 0.0),
                     confluence_score=ot["confluence_score"],
+                    quality_factors=ot.get("quality_factors", 0),
+                    tp1_hit=tp1_hit,
+                    tp2_hit=tp2_hit,
+                    tp3_hit=tp3_hit,
+                    tp4_hit=tp4_hit,
+                    tp5_hit=tp5_hit,
+                    tp1_close_pct=TP1_CLOSE_PCT,
+                    tp2_close_pct=TP2_CLOSE_PCT,
+                    tp3_close_pct=TP3_CLOSE_PCT,
+                    tp4_close_pct=TP4_CLOSE_PCT,
+                    tp5_close_pct=TP5_CLOSE_PCT,
+                    partial_exits=list(ot.get("partial_exits", [])),
+                    final_position_pct=final_position_pct,
+                    trade_duration_hours=trade_duration_hours,
+                    max_favorable_excursion=ot.get("mfe_rr", 0.0),
+                    max_adverse_excursion=ot.get("mae_rr", 0.0),
                 )
                 trades.append(trade)
                 trades_to_close.append(ot)
@@ -2779,6 +3029,24 @@ def simulate_trades(
                 tp5_rr = (tp5 - entry_price) / risk if tp5 and direction == "bullish" else ((entry_price - tp5) / risk if tp5 else 0)
                 
                 cost_as_r = transaction_cost_price / risk if risk > 0 else 0.0
+
+                sizing_result = {}
+                if calculate_lot_size is not None:
+                    sizing_result = calculate_lot_size(
+                        symbol=symbol,
+                        account_balance=account_size,
+                        risk_percent=params.risk_per_trade_pct / 100,
+                        entry_price=entry_price,
+                        stop_loss_price=sl,
+                        max_lot=100.0,
+                        min_lot=0.01,
+                        existing_positions=len(open_trades),
+                    ) or {}
+                lot_size = sizing_result.get("lot_size", 0.0)
+                risk_usd = sizing_result.get("risk_usd", account_size * (params.risk_per_trade_pct / 100))
+                stop_pips = sizing_result.get("stop_pips", (risk / pip_value) if pip_value else 0.0)
+                actual_risk_pct = sizing_result.get("actual_risk_pct", risk_usd / account_size if account_size > 0 else 0.0)
+                quality_factors = getattr(sig, "quality_factors", 0)
                 
                 # Apply volatile asset boost for high-volatility instruments
                 boosted_confluence, _ = apply_volatile_asset_boost(
@@ -2814,7 +3082,17 @@ def simulate_trades(
                     "tp4_rr": tp4_rr,
                     "tp5_rr": tp5_rr,
                     "confluence_score": boosted_confluence,
+                    "quality_factors": quality_factors,
                     "transaction_cost_r": cost_as_r,
+                    "lot_size": lot_size,
+                    "risk_usd": risk_usd,
+                    "risk_pct": params.risk_per_trade_pct,
+                    "stop_pips": stop_pips,
+                    "actual_risk_pct": actual_risk_pct,
+                    "mfe_rr": 0.0,
+                    "mae_rr": 0.0,
+                    "partial_exits": [],
+                    "position_remaining": 1.0,
                 })
                 entered_signal_ids.add(sig_id)
     
